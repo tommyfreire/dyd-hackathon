@@ -1,0 +1,300 @@
+/* BairesDev Design System (DS3) — Tokens
+ * Merged from DS1 (token precision) + DS2 (voice, signatures).
+ * Source of truth: 2026 Design System Components.fig + Brand Notes.
+ * Display headlines are Bold (700) per DS2 — paired with the orange-period
+ * tic and the 8px orange top bar as required brand signatures.
+ */
+
+/* Brand font: Outfit — variable font (preferred), with static weight files as fallback. */
+@font-face {
+  font-family: "Outfit";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("/fonts/Outfit-VariableFont_wght.ttf") format("truetype-variations"),
+       url("/fonts/Outfit-VariableFont_wght.ttf") format("truetype");
+}
+@font-face { font-family: "Outfit"; font-style: normal; font-weight: 100; font-display: swap; src: url("/fonts/Outfit-Thin.ttf")        format("truetype"); }
+@font-face { font-family: "Outfit"; font-style: normal; font-weight: 200; font-display: swap; src: url("/fonts/Outfit-ExtraLight.ttf")  format("truetype"); }
+@font-face { font-family: "Outfit"; font-style: normal; font-weight: 300; font-display: swap; src: url("/fonts/Outfit-Light.ttf")       format("truetype"); }
+@font-face { font-family: "Outfit"; font-style: normal; font-weight: 400; font-display: swap; src: url("/fonts/Outfit-Regular.ttf")     format("truetype"); }
+@font-face { font-family: "Outfit"; font-style: normal; font-weight: 500; font-display: swap; src: url("/fonts/Outfit-Medium.ttf")      format("truetype"); }
+@font-face { font-family: "Outfit"; font-style: normal; font-weight: 600; font-display: swap; src: url("/fonts/Outfit-SemiBold.ttf")    format("truetype"); }
+@font-face { font-family: "Outfit"; font-style: normal; font-weight: 700; font-display: swap; src: url("/fonts/Outfit-Bold.ttf")        format("truetype"); }
+@font-face { font-family: "Outfit"; font-style: normal; font-weight: 800; font-display: swap; src: url("/fonts/Outfit-ExtraBold.ttf")   format("truetype"); }
+@font-face { font-family: "Outfit"; font-style: normal; font-weight: 900; font-display: swap; src: url("/fonts/Outfit-Black.ttf")       format("truetype"); }
+
+:root {
+  /* ───────── Brand Core ───────── */
+  --bd-orange:        #F66135; /* primary brand accent */
+  --bd-orange-glow:   rgba(246,97,53,0.20);
+  --bd-orange-hover:  #F7764F;
+  --bd-orange-press:  #D6542E;
+
+  --bd-black:         #111111; /* primary dark base */
+  --bd-deep:          #000000; /* deck background */
+  --bd-white:         #FFFFFF;
+
+  /* ───────── Neutrals (10-step scale) ───────── */
+  --bd-neutral-900:   #111111;
+  --bd-neutral-850:   #1B1F22;
+  --bd-neutral-800:   #272E34; /* card dark */
+  --bd-neutral-700:   #3D4751; /* stat border, divider */
+  --bd-neutral-600:   #52606D;
+  --bd-neutral-500:   #687580;
+  --bd-neutral-400:   #7F8993; /* subtitle gray */
+  --bd-neutral-300:   #959EA6;
+  --bd-neutral-200:   #C2C7CC; /* body on dark */
+  --bd-neutral-150:   #DEDEE0; /* light card surface */
+  --bd-neutral-100:   #E5E7E9;
+  --bd-neutral-50:    #F6F7F8; /* foreground white-ish */
+
+  /* ───────── Semantic Colors ───────── */
+  --bd-blue-900:  #10468E;
+  --bd-blue-700:  #1355AC;
+  --bd-blue-500:  #1A73E8; /* secondary accent */
+  --bd-blue-300:  #91BCF4;
+  --bd-blue-100:  #EAF2FD;
+  --bd-blue-glow: #5B89FF; /* blue gradient + testimonial */
+
+  --bd-green-700: #107C5A;
+  --bd-green-500: #16A87A;
+  --bd-green-300: #8FD5BF;
+
+  --bd-red-700:   #B11C1C;
+  --bd-red-500:   #DD3636;
+  --bd-red-300:   #FFA4AF;
+
+  --bd-yellow-700: #BD7F00;
+  --bd-yellow-500: #FFAC00;
+  --bd-yellow-300: #FFD785;
+
+  /* Solid surface colors used in slide cards */
+  --bd-solid-blue: #143A6B;
+  --bd-solid-teal: #085041;
+  --bd-solid-navy: #0C1A2E;
+
+  /* ───────── Foreground roles ───────── */
+  --fg-1: var(--bd-neutral-50);   /* primary text on dark */
+  --fg-2: var(--bd-neutral-200);  /* body text on dark */
+  --fg-3: var(--bd-neutral-400);  /* muted / subtitle */
+  --fg-4: var(--bd-neutral-500);  /* very muted / footers */
+  --fg-on-light: var(--bd-black);
+
+  /* ───────── Background roles ───────── */
+  --bg-page:    var(--bd-black);
+  --bg-deck:    var(--bd-deep);
+  --bg-card:    var(--bd-neutral-800);
+  --bg-card-deep: #1B1F22;
+  --bg-card-light: var(--bd-neutral-150);
+  --bg-card-solid-blue: var(--bd-solid-blue);
+
+  /* ───────── Effects ───────── */
+  --gradient-glow-orange:
+    linear-gradient(180deg, rgba(246,97,53,0.20) 0%, rgba(246,97,53,0) 100%);
+  --gradient-glow-blue:
+    linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(91,137,255,0.20) 100%);
+  --gradient-glow-blue-deep:
+    linear-gradient(180deg, #111111 0%, #10468E 100%);
+  --gradient-glow-green:
+    linear-gradient(180deg, #6DCDA8 32%, #9EE9CC 100%);
+
+  --shadow-light-card: 0 4px 24px 0 rgba(0,0,0,0.08);
+  --backdrop-blur: blur(2px);
+
+  --border-slot: 1px dashed rgba(255,255,255,0.10);
+  --border-card-soft: 1px solid rgba(255,255,255,0.04);
+  --border-stat: 2px solid var(--bd-neutral-700);
+  --border-orange-soft: 1px solid rgba(246,97,53,0.40);
+
+  /* ───────── Spacing ───────── */
+  --gap-content: 24px;
+  --gap-grid:    24px;
+  --gap-section: 96px;
+  --pad-card:    48px;
+  --pad-card-sm: 32px;
+  --pad-pill-y:  20px;
+  --pad-pill-x:  56px;
+
+  /* ───────── Radii ───────── */
+  --radius-card:  24px;
+  --radius-image: 16px;
+  --radius-icon:  16px;
+  --radius-pill:  999px;
+  --radius-deck-card: 24px;
+
+  /* ───────── Type scale ─────────
+     Family: Outfit. Line-height: 130% on body/subtitles, 100–110% on headings.
+     Display headings are Bold (700). Subtitles 500. Body Regular (400).
+     Big numbers / eyebrow labels: Bold (700) — same weight as headlines, but
+     reserved styling (orange, tracked uppercase). */
+  --font-sans: "Outfit", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  /* Display weight tokens — DS2 brand uses Bold across display tiers */
+  --fw-display: 700;   /* h1–h5 — bold confidence */
+  --fw-subtitle: 500;  /* subtitles, card titles */
+  --fw-body: 400;      /* paragraph */
+  --fw-emphasis: 500;  /* in-line emphasis */
+  --fw-eyebrow: 700;   /* tracked uppercase labels */
+
+  --fs-h1: 128px;
+  --fs-h2: 96px;
+  --fs-h3: 72px;
+  --fs-h4: 52px;
+  --fs-h5: 40px;
+  --fs-sub-l: 26px;
+  --fs-sub-m: 22px;
+  --fs-sub-s: 18px;
+  --fs-body-l: 18px;
+  --fs-body-m: 16px;
+  --fs-body-s: 12px;
+  --fs-eyebrow: 11px; /* uppercase 700 letter-spaced 2px label */
+  --fs-tiny: 9px;
+
+  /* line-heights */
+  --lh-display: 1.05;
+  --lh-heading: 1.10;
+  --lh-body: 1.30;
+  --lh-prose: 1.50;
+}
+
+/* ───────── Semantic element styles ───────── */
+html, body {
+  font-family: var(--font-sans);
+  background: var(--bg-page);
+  color: var(--fg-1);
+  font-size: var(--fs-body-m);
+  line-height: var(--lh-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1, .h1 { font: var(--fw-display) var(--fs-h1)/var(--lh-display) var(--font-sans); letter-spacing: -0.02em; color: var(--fg-1); }
+h2, .h2 { font: var(--fw-display) var(--fs-h2)/var(--lh-display) var(--font-sans); letter-spacing: -0.02em; color: var(--fg-1); }
+h3, .h3 { font: var(--fw-display) var(--fs-h3)/var(--lh-heading) var(--font-sans); letter-spacing: -0.01em; color: var(--fg-1); }
+h4, .h4 { font: var(--fw-display) var(--fs-h4)/var(--lh-heading) var(--font-sans); letter-spacing: -0.01em; color: var(--fg-1); }
+h5, .h5 { font: var(--fw-display) var(--fs-h5)/var(--lh-heading) var(--font-sans); color: var(--fg-1); }
+
+.subtitle-l { font: 500 var(--fs-sub-l)/var(--lh-body) var(--font-sans); color: var(--fg-2); }
+.subtitle-m { font: 500 var(--fs-sub-m)/var(--lh-body) var(--font-sans); color: var(--fg-2); }
+.subtitle-s { font: 500 var(--fs-sub-s)/var(--lh-body) var(--font-sans); color: var(--fg-2); }
+
+.body-l, p { font: 400 var(--fs-body-l)/var(--lh-prose) var(--font-sans); color: var(--fg-2); }
+.body-m { font: 400 var(--fs-body-m)/var(--lh-prose) var(--font-sans); color: var(--fg-2); }
+.body-s { font: 400 var(--fs-body-s)/var(--lh-prose) var(--font-sans); color: var(--fg-3); }
+
+/* Eyebrow / tag — orange uppercase tracked label, used everywhere as section index */
+.eyebrow {
+  font: 700 var(--fs-eyebrow)/1 var(--font-sans);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--bd-orange);
+}
+
+/* The orange dot before an eyebrow */
+.eyebrow-dot {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 2px;
+  background: var(--bd-orange);
+  margin-right: 10px;
+  vertical-align: middle;
+  position: relative;
+  top: -2px;
+}
+
+/* Pill button (CTA) */
+.btn-cta {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--bd-orange);
+  color: var(--bd-white);
+  font: 700 var(--fs-sub-s)/1 var(--font-sans);
+  border-radius: var(--radius-pill);
+  padding: var(--pad-pill-y) var(--pad-pill-x);
+  border: none;
+  cursor: pointer;
+  transition: background 0.16s ease, transform 0.16s ease;
+}
+.btn-cta:hover  { background: var(--bd-orange-hover); }
+.btn-cta:active { background: var(--bd-orange-press); transform: scale(0.98); }
+
+/* Card baseline */
+.bd-card {
+  background: var(--bg-card);
+  border-radius: var(--radius-card);
+  padding: var(--pad-card);
+}
+
+/* ───────── Brand signatures ─────────
+   These two are the BairesDev tells. Use them on every marketing surface. */
+
+/* 1. Signature orange period.
+   Wrap the closing "." of any display headline in <span class="period">.
+   <h1>Top 1% LATAM engineers<span class="period">.</span></h1>           */
+.period {
+  color: var(--bd-orange);
+}
+
+/* 2. Top bar — 8px solid orange, full bleed, sits at the very top of every
+      slide / page / ad. Treat as a required frame element.                  */
+.bd-top-bar {
+  width: 100%;
+  height: 8px;
+  background: var(--bd-orange);
+  flex-shrink: 0;
+}
+
+/* ───────── DS2 compatibility aliases ─────────
+   The website kit (ui_kits/website) and several preview cards were authored
+   against DS2 token names. Aliasing them to DS1's canonical tokens keeps both
+   working without forking the palette. DS1 names remain authoritative. */
+:root {
+  /* Foreground / background */
+  --fg:            var(--fg-1);
+  --bg:            var(--bg-page);
+  --bg-deep:       var(--bg-deck);
+
+  /* Surfaces (0 = deepest → 3 = lightest dark card) */
+  --surface-0:     #0E1316;
+  --surface-1:     var(--bd-neutral-800);  /* #272E34 */
+  --surface-2:     #313A41;
+  --surface-3:     var(--bd-neutral-700);  /* #3D4751 */
+
+  /* Borders */
+  --border:        rgba(255,255,255,0.06);
+  --border-strong: rgba(255,255,255,0.12);
+  --border-accent: rgba(246,97,53,0.40);
+
+  /* Accent aliases (DS2 names → DS1 orange) */
+  --accent:        var(--bd-orange);
+  --accent-hover:  var(--bd-orange-hover);
+  --accent-press:  var(--bd-orange-press);
+  --accent-soft:   #F88048;
+  --accent-deep:   #F55030;
+  --accent-tint:   rgba(246,97,53,0.10);
+  --accent-glow:   var(--bd-orange-glow);
+
+  /* Card-glow tints used on the Solutions slide (DS2). Soft radials only. */
+  --glow-amber:    rgba(255,172,0,0.18);
+  --glow-red:      rgba(221, 54, 54,0.18);
+  --glow-indigo:   rgba(91,137,255,0.18);
+  --glow-teal:     rgba(8, 80, 65, 0.30);
+  --glow-forest:   rgba(16,124,90,0.20);
+  --glow-plum:     rgba(120, 60,120,0.20);
+
+  /* Shadows */
+  --shadow-glow:   0 0 40px -8px rgba(246,97,53,0.45);
+  --shadow-raise:  0 8px 32px rgba(0,0,0,0.30);
+  --shadow-ring:   0 0 0 1px var(--bd-orange), 0 0 40px -4px var(--bd-orange-glow);
+
+  /* Motion */
+  --ease-out:      cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* Extra radii used by website kit */
+  --radius-sm:     8px;
+  --radius-md:     16px;
+  --radius-lg:     24px;
+  --radius-xl:     32px;
+  --radius-pill:   999px;
+}
