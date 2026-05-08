@@ -2,9 +2,10 @@
 
 // /agents — admin-only control panel.
 //
-// Three to four agents live as cards here. Challenge Designer, Hype Bot, and
-// the Audit Agent (which just links to /admin) are always shown for admins.
-// The Growth Insight Extractor only appears once the challenge has finished.
+// Three to four agents live as cards here. Challenge Designer, Daremaster,
+// and the Audit Agent (which just links to /admin) are always shown for
+// admins. The Growth Insight Extractor only appears once the challenge has
+// finished.
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -15,22 +16,22 @@ import { PageHead } from "@/components/shell/PageHead";
 import { useRole } from "@/lib/role-context";
 import { useStage } from "@/lib/stage-context";
 import {
-  buildHypeBotSnapshot,
+  buildDaremasterSnapshot,
   getAgents,
   getAuditQueue,
   getGrowthInsightSent,
-  getHypeBotInsightSent,
+  getDaremasterInsightSent,
   getParticipants,
-  postHypeBotMessage,
+  postDaremasterMessage,
   setFeedPostPinned,
 } from "@/lib/api";
-import * as hypeBot from "@/agents/hype-bot";
+import * as daremaster from "@/agents/daremaster";
 import type { AgentKind, AgentSnapshot, AuditResult, FeedPost, Participant } from "@/lib/types";
-import type { HypeBotPost } from "@/agents/types";
+import type { DaremasterPost } from "@/agents/types";
 import { DesignerModal } from "./DesignerModal";
 
 const AGENT_COLOR: Record<AgentKind, string> = {
-  hype_bot:           "agent-orange",
+  daremaster:         "agent-orange",
   audit_assistant:    "agent-blue",
   challenge_designer: "agent-green",
   insight_extractor:  "agent-purple",
@@ -48,7 +49,7 @@ export function AgentsPage() {
   }, []);
 
   // Re-poll growth-insight flag so the NEW pill drops away the moment Gabo
-  // hits "Send insights to Hype Bot" on /insights.
+  // hits "Send insights to Daremaster" on /insights.
   useEffect(() => {
     let cancelled = false;
     const tick = async () => {
@@ -92,7 +93,7 @@ export function AgentsPage() {
             onOpen={() => setOpenDesigner(true)}
           />
         )}
-        {byId("hype_bot") && <HypeBotCard snapshot={byId("hype_bot")!} />}
+        {byId("daremaster") && <DaremasterCard snapshot={byId("daremaster")!} />}
         {byId("audit_assistant") && <AuditAgentCard snapshot={byId("audit_assistant")!} />}
         {stage === "completed" && byId("insight_extractor") && (
           <InsightExtractorCard snapshot={byId("insight_extractor")!} growthSent={growthSent} />
@@ -169,7 +170,7 @@ function AuditAgentCard({ snapshot }: { snapshot: AgentSnapshot }) {
   );
 }
 
-// ─── Hype Bot ──────────────────────────────────────────────────────────────
+// ─── Daremaster ────────────────────────────────────────────────────────────
 
 const TRIVIAL_VARIANTS: string[] = [
   "The Hype Ranking is heating up. Keep going — every testimonial counts.",
@@ -219,10 +220,10 @@ async function buildInsightPost(): Promise<string> {
   );
 }
 
-function HypeBotCard({ snapshot }: { snapshot: AgentSnapshot }) {
+function DaremasterCard({ snapshot }: { snapshot: AgentSnapshot }) {
   const { stage } = useStage();
   const t = useToast();
-  const [draft, setDraft] = useState<HypeBotPost | null>(null);
+  const [draft, setDraft] = useState<DaremasterPost | null>(null);
   const [posted, setPosted] = useState<FeedPost | null>(null);
   const [pinning, setPinning] = useState(false);
   const [trivialIdx, setTrivialIdx] = useState(0);
@@ -248,7 +249,7 @@ function HypeBotCard({ snapshot }: { snapshot: AgentSnapshot }) {
     if (isCompleted) return;
     let cancelled = false;
     const tick = async () => {
-      const sent = await getHypeBotInsightSent();
+      const sent = await getDaremasterInsightSent();
       if (cancelled) return;
       setInsightSent((prev) => {
         if (sent && !prev && !insightReady) {
@@ -314,8 +315,8 @@ function HypeBotCard({ snapshot }: { snapshot: AgentSnapshot }) {
     setGenerating(true);
     setPosted(null);
     try {
-      const snap = await buildHypeBotSnapshot();
-      const base = hypeBot.generate(snap);
+      const snap = await buildDaremasterSnapshot();
+      const base = daremaster.generate(snap);
       let content: string;
       if (isCompleted && bothFinalReady) {
         content = await buildWinnerPost();
@@ -342,7 +343,7 @@ function HypeBotCard({ snapshot }: { snapshot: AgentSnapshot }) {
     const cta = isCompleted
       ? { label: "See the growth report", href: "/insights" }
       : undefined;
-    const fp = await postHypeBotMessage(draft, false, cta);
+    const fp = await postDaremasterMessage(draft, false, cta);
     setPosted(fp);
     setDraft(null);
     t.push("Daremaster post added to the feed.", "success");
@@ -532,7 +533,7 @@ function ActionPanel({ action, hint }: { action: React.ReactNode; hint: string }
 
 interface FeedCardPreviewProps {
   content: string;
-  reactions: HypeBotPost["reactions"];
+  reactions: DaremasterPost["reactions"];
   pinned: boolean;
   cta?: { label: string; href: string };
 }

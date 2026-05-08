@@ -87,14 +87,14 @@ export interface ChallengeBrief {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Hype Bot
+// Daremaster
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * What the Hype Bot looks at to decide what to broadcast.
- * Built from the current world state — see hype-bot.ts buildSnapshot().
+ * What the Daremaster looks at to decide what to broadcast.
+ * Built from the current world state — see daremaster.ts + buildDaremasterSnapshot().
  */
-export interface HypeBotSnapshot {
+export interface DaremasterSnapshot {
   challenge: Pick<Challenge, "id" | "title" | "registrationDeadline" | "submissionDeadline" | "status">;
   ranking: RankingEntry[];
   participantCount: number;
@@ -104,8 +104,8 @@ export interface HypeBotSnapshot {
   daysToSubmissionDeadline: number;
 }
 
-/** A new feed post the Hype Bot wants to publish. */
-export interface HypeBotPost {
+/** A new feed post the Daremaster wants to publish. */
+export interface DaremasterPost {
   /** Why the bot picked this template — used to label the agent's "trace". */
   trigger:
     | "launch"
@@ -166,7 +166,7 @@ export type InsightBundle = GrowthAssetBundle & {
 /** Identifies which agent emitted a given output, for UI traces. */
 export type AgentId =
   | "challenge_designer"
-  | "hype_bot"
+  | "daremaster"
   | "audit_assistant"
   | "insight_extractor";
 

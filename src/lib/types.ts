@@ -27,7 +27,7 @@ export type ReactionKind = "fire" | "clap" | "rocket" | "eyes" | "trophy";
 
 export type AgentKind =
   | "challenge_designer"
-  | "hype_bot"
+  | "daremaster"
   | "audit_assistant"
   | "insight_extractor";
 

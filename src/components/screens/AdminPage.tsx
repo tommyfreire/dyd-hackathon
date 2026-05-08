@@ -13,9 +13,9 @@ import {
   adminDeclareWinner,
   adminOverrideScore,
   getAuditQueue,
-  getHypeBotInsightSent,
+  getDaremasterInsightSent,
   getParticipants,
-  sendHypeBotSnapshot,
+  sendDaremasterSnapshot,
 } from "@/lib/api";
 import {
   computeFormulaScore,
@@ -54,7 +54,7 @@ export function AdminPage() {
   const refresh = useCallback(async () => {
     setAudits(await getAuditQueue("dyd-001"));
     setParts(await getParticipants("dyd-001"));
-    setSnapshotSent(await getHypeBotInsightSent());
+    setSnapshotSent(await getDaremasterInsightSent());
   }, []);
 
   useEffect(() => {
@@ -129,7 +129,7 @@ export function AdminPage() {
   const isFinished = stage === "completed";
 
   const onSendSnapshot = async () => {
-    await sendHypeBotSnapshot();
+    await sendDaremasterSnapshot();
     setSnapshotSent(true);
     t.push("Snapshot sent. The Daremaster will use it on the next post.", "success");
   };
@@ -154,7 +154,7 @@ export function AdminPage() {
         }
       />
 
-      {/* Day 14: snapshot view + send-to-hype-bot. No tabs, no winner. */}
+      {/* Day 14: snapshot view + send-to-daremaster. No tabs, no winner. */}
       {!isFinished && (
         <SnapshotView
           audits={audits}

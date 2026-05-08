@@ -22,8 +22,8 @@ import {
 import { audit } from "@/agents/audit-assistant";
 import { extract } from "@/agents/insight-extractor";
 import type {
-  HypeBotPost,
-  HypeBotSnapshot,
+  DaremasterPost,
+  DaremasterSnapshot,
   InsightBundle,
 } from "@/agents/types";
 import type {
@@ -57,9 +57,9 @@ interface MutableState {
   challenge: Challenge;
   currentUserId: string;
   notifications: Notification[];
-  /** Has the admin sent the latest audit snapshot to the Hype Bot at Day 14? */
-  hypeBotInsightSent?: boolean;
-  /** Has the admin sent the Growth Insight Extractor's bundle to the Hype Bot? */
+  /** Has the admin sent the latest audit snapshot to the Daremaster at Day 14? */
+  daremasterInsightSent?: boolean;
+  /** Has the admin sent the Growth Insight Extractor's bundle to the Daremaster? */
   growthInsightSent?: boolean;
 }
 
@@ -424,23 +424,24 @@ export function resetState(): void {
   state = null;
 }
 
-// ── Hype Bot insight handoff ───────────────────────────────────────────────
+// ── Daremaster insight handoff ─────────────────────────────────────────────
 //
-// At Day 14, the admin can "Send snapshot to Hype Bot" from the Admin Review
-// page. That flips a flag so the next Hype Bot generation produces an
-// insightful post (about Charlie being the dark horse) instead of a trivial
-// one. The Agents page reads this flag to decide which variant to surface.
+// At Day 14, the admin can "Send snapshot to Daremaster" from the Admin
+// Review page. That flips a flag so the next Daremaster generation produces
+// an insightful post (about Charlie being the dark horse) instead of a
+// trivial one. The Agents page reads this flag to decide which variant to
+// surface.
 
-export async function sendHypeBotSnapshot(): Promise<void> {
+export async function sendDaremasterSnapshot(): Promise<void> {
   const s = hydrate();
-  s.hypeBotInsightSent = true;
+  s.daremasterInsightSent = true;
   persist();
   return delay(undefined);
 }
 
-export async function getHypeBotInsightSent(): Promise<boolean> {
+export async function getDaremasterInsightSent(): Promise<boolean> {
   const s = hydrate();
-  return delay(!!s.hypeBotInsightSent);
+  return delay(!!s.daremasterInsightSent);
 }
 
 export async function sendGrowthInsightSnapshot(): Promise<void> {
@@ -468,8 +469,8 @@ export function reloadFromStage(): void {
 // to the world, return the result for the UI to render).
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Build a HypeBot snapshot from the current world state. */
-export async function buildHypeBotSnapshot(): Promise<HypeBotSnapshot> {
+/** Build a Daremaster snapshot from the current world state. */
+export async function buildDaremasterSnapshot(): Promise<DaremasterSnapshot> {
   const s = hydrate();
   const now = Date.now();
   const days = (iso: string) =>
@@ -490,9 +491,9 @@ export async function buildHypeBotSnapshot(): Promise<HypeBotSnapshot> {
   });
 }
 
-/** Persist a Hype Bot post to the feed and return the resulting FeedPost. */
-export async function postHypeBotMessage(
-  post: HypeBotPost,
+/** Persist a Daremaster post to the feed and return the resulting FeedPost. */
+export async function postDaremasterMessage(
+  post: DaremasterPost,
   pinned: boolean = false,
   cta?: FeedPost["cta"]
 ): Promise<FeedPost> {

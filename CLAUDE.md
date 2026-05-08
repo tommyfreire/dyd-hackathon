@@ -9,32 +9,43 @@ the last one left off without the user having to re-explain anything.
 DYD ("Do You Dare") is an internal hackathon prototype for a BairesDev
 growth-challenge platform. Employees register for time-boxed dares (e.g.
 "collect client testimonials"), self-report progress on a public Hype
-Ranking, and submit evidence. AI agents run in the background:
+Ranking, and submit evidence. Four AI agents run in the background:
 
 - **Challenge Designer** turns a one-line idea into a full challenge brief.
-- **Hype Bot** posts contextual commentary in the social feed.
+- **Daremaster** posts contextual commentary in the social feed and is the
+  same persona as the launch-video narrator.
 - **AI Audit Assistant** scores evidence against a rubric and surfaces a
   recommendation; the admin keeps the final call and can override scores.
-- **Growth Insight Extractor** mines approved testimonials into reusable
+- **Growth Insight Extractor** mines the approved corpus into reusable
   marketing assets (quotes, case studies, snippets, LinkedIn drafts).
 
-The demo is the front door. **The plan is in `NEXT_STEPS.md`.** Read that
-before starting any work.
+**Canonical docs to read** (in this order):
+
+1. `README.md` — quick start, doc map.
+2. `PRODUCT.md` — what DYD is. The product spec.
+3. `ARCHITECTURE.md` — code map and mock-vs-real boundaries.
+4. `DEMO.md` — what the recorded demo shows + the divergence rule.
+5. `NEXT_STEPS.md` — the three-step plan.
+6. `STEP2_BRIEF.md` — only if you're planning Step 2.
+
+`DEMO_SCRIPT.md` is the user's recording reference. It's not part of the
+canonical product spec — skip it unless the user asks you to edit it.
 
 ## Status
 
-We are at **Step 1** of `NEXT_STEPS.md` — preparing to record the demo. The
-next concrete tasks are listed under "Status" in that file. Update them as
-work completes.
+Step 1 is complete: the demo is recordable. Step 2 is the active step —
+replacing selected agent mocks with real LLM-driven implementations. The
+user is using a separate AI tool to scope Step 2 against `STEP2_BRIEF.md`
+before any implementation begins.
 
 ## Demo state model
 
 Four stages live in `src/lib/demo-stages.ts`:
 
 - `launch` — Tomi lands on the Challenge page, hasn't yet accepted.
-- `day_3` — early moves, Tomi uploads his first testimonial.
-- `day_14` — leaderboard heats up, admin sends snapshot to Hype Bot.
-- `completed` — final review, growth insights, winner announcement.
+- `day_3` — Tomi uploads a testimonial, count auto-bumps.
+- `day_14` — Gabo tunes the formula, sends the snapshot to the Daremaster.
+- `completed` — final review, accept scores, declare winner, run insights.
 
 Selecting a stage rebuilds the entire snapshot atomically (participants,
 ranking, feed, audits, evidence, notifications). This happens via
@@ -43,14 +54,26 @@ ranking, feed, audits, evidence, notifications). This happens via
 Two flags travel inside the snapshot and drive the agent handoff demo
 beats:
 
-- `hypeBotInsightSent` — set by the admin's "Send snapshot to Hype Bot"
+- `daremasterInsightSent` — set by the admin's "Send snapshot to Daremaster"
   button on `/admin` at Day 14. Unlocks the Charlie-dark-horse post.
-- `growthInsightSent` — set by the admin's "Send insights to Hype Bot"
-  button on `/insights` at Completed. Unlocks the winner post.
+- `growthInsightSent` — set by the admin's "Send insights to Daremaster"
+  button on `/insights` at Completed. Unlocks the winner-announcement post.
+
+Old localStorage from before the rename (`hypeBotInsightSent`) will be
+overwritten on the next `?act=` URL — no migration logic needed.
 
 The world dispatches a `dyd:state-changed` window event after every
-mutation so subscribers (e.g. the sidebar's locked-tab logic, the agent
-handoff loaders) refresh without waiting for navigation.
+mutation so subscribers (the sidebar's locked-tab logic, the agent
+handoff loaders, the `winnerDeclared` gate on Growth Insights) refresh
+without waiting for navigation.
+
+## Account / stage setup — `?act=` URL
+
+The TopBar shows a static account badge (no in-product role switcher).
+Account and stage are set via a hidden URL parameter: `applyActFromUrl()`
+in `src/lib/act-url.ts` parses `?act=tomi:launch`, `?act=gabo:day_14`,
+`?act=gabo:completed:hype,growth`, etc. Each call resets state and
+rebuilds the snapshot from seed.
 
 ## Scoring formula
 
@@ -84,15 +107,18 @@ Two accounts only:
 - `Tomi` (participant) — `u-sofia` / `p-sofia` under the hood.
 - `Gabo` (admin) — `u-admin`.
 
-Sponsor and Spectator are gone. The role switcher lives in `TopBar.tsx`,
-the demo-stage switcher in `DemoStageSwitcher.tsx`, and the Restart-demo
-button in `TopBar.tsx`. **All three are scheduled for removal during
-Step 1** — see `NEXT_STEPS.md`.
+Sponsor and Spectator are gone. The TopBar shows a static badge; there is
+no role switcher and no Restart-demo button. State is reset via the
+`?act=` URL.
 
 ## Conventions to keep
 
 - **No "mock" / "mocked" / "simulated" wording in user-visible UI.** The
   fact that the backend is mocked is implementation detail.
+- **No "demo" / "prototype" wording in user-visible UI either.** Demo-meta
+  language was scrubbed from screens; if you see it, ask before re-adding.
+- **No scores in Daremaster posts.** The Daremaster never quotes audit
+  scores on the public feed. Counts and qualitative descriptions are fine.
 - **Default to no comments.** Only add a comment when the *why* is
   non-obvious. Don't narrate what code does.
 - **Brief end-of-turn summaries.** One or two sentences on what changed
@@ -110,16 +136,15 @@ Step 1** — see `NEXT_STEPS.md`.
 src/
 ├── app/                          Next.js routes (thin wrappers)
 ├── components/
-│   ├── shell/                    TopBar, Sidebar, AppShell, etc.
+│   ├── shell/                    TopBar, Sidebar, AppShell, NotificationBell
 │   ├── ui/                       Modal, Avatar, Toast, Icon (lucide-style SVGs)
 │   └── screens/                  One file per page: ChallengePage,
 │                                 DashboardPage, RankingPage, FeedPage,
 │                                 AdminPage, AgentsPage, InsightsPage,
-│                                 FinalRankingPage, DesignerModal,
-│                                 RegisterModal
+│                                 DesignerModal, RegisterModal
 ├── agents/
 │   ├── audit-assistant.ts        Pure function: rubric scoring + flags
-│   ├── hype-bot.ts               Pure function: snapshot → post
+│   ├── daremaster.ts             Pure function: snapshot → post
 │   ├── insight-extractor.ts      Pure function: corpus → asset bundle
 │   ├── challenge-designer.ts     Templates keyed off the one-line prompt
 │   └── types.ts                  Agent I/O contracts
@@ -127,10 +152,11 @@ src/
 │   ├── types.ts                  Shared product types (Challenge, Audit, etc.)
 │   ├── api.ts                    Fake API layer; localStorage-backed
 │   ├── mock-data.ts              Seed data (participants, evidence, posts)
-│   ├── demo-stages.ts            Stage shaping (the single source of truth
-│                                 for what the world looks like at each scene)
+│   ├── demo-stages.ts            Stage shaping — single source of truth for
+│                                 what the world looks like at each scene
 │   ├── formula.ts                Scoring formula + persistence
 │   ├── format.ts                 Stage-anchored `ago()` and date helpers
+│   ├── act-url.ts                ?act= URL handler (recording setup)
 │   ├── role-context.tsx          Role provider (Tomi/Gabo)
 │   └── stage-context.tsx         Stage provider
 └── styles/
@@ -139,25 +165,19 @@ src/
     └── tokens.css                Color/space/font tokens
 ```
 
-## Auxiliary docs (will be reorganized in Step 3)
-
-- `DEMO_IMPLEMENTATION_PLAN.md` — the spec we just executed against. Useful
-  reference for *intent* per stage and per page.
-- `DEMO_STEPS.md`, `DYD_PRODUCT_CONTEXT.md`, `FIRST_DRAFT_DECISIONS.md`,
-  `AGENTS.md`, `SETUP.md` — historical scaffolding. Some will be deleted,
-  some folded into the README during Step 3. Don't treat them as canonical.
-
 ## Quick smoke test
 
 After any structural change, this should still work:
 
 1. `npm run dev`
 2. `npx tsc --noEmit`
-3. Click "Restart demo" in the top bar (until removed) — drops you onto
-   `launch` with Tomi unregistered and the right three nav tabs locked.
+3. Visit `/?act=tomi:launch` — Tomi lands unregistered with the three
+   follow-on tabs locked.
 4. Click "I Dare" → tabs unlock instantly (powered by the
    `dyd:state-changed` event).
-5. Switch through `day_3` / `day_14` / `completed` and check that each
-   page reflects the stage.
+5. Visit `/?act=gabo:day_14` — admin lands; the Daremaster card is
+   reachable; the formula panel is on `/admin`.
+6. Visit `/?act=gabo:completed` — admin lands; "Open Final Review" CTA;
+   only one notification in the bell (until winner is declared).
 
 If anything in this file conflicts with reality, fix the file.

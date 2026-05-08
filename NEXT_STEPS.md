@@ -35,7 +35,7 @@ choose anything from the top bar during the demo.
 1. Before each take, the user tells Claude **which stage and which account**
    they are about to record.
 2. Claude configures the world to match (active stage, current user, any
-   in-flight flags such as `hypeBotInsightSent` / `growthInsightSent`,
+   in-flight flags such as `daremasterInsightSent` / `growthInsightSent`,
    pinned posts, etc.) before the user hits record.
 3. The user records the stage.
 4. Repeat for every stage.
@@ -84,11 +84,11 @@ recorded.
 
 ### In scope (candidates for real implementations)
 
-Everything else is on the table. The first candidate is the **Hype Bot**: it
-already has the structure to receive a context snapshot of the challenge, so
-we can keep the snapshot mocked but make the agent itself reason over that
-input and return a real post. The same approach can apply to the **Growth
-Insight Extractor** (mocked corpus → real extraction).
+Everything else is on the table. The first candidate is the **Daremaster**:
+it already has the structure to receive a context snapshot of the challenge,
+so we can keep the snapshot mocked but make the agent itself reason over
+that input and return a real post. The same approach can apply to the
+**Growth Insight Extractor** (mocked corpus → real extraction).
 
 The choice of which mocks to replace is a discussion between the user and
 Claude. For each candidate, decide together:
@@ -154,12 +154,13 @@ of Step 3 since they are session-handoff scaffolding, not product docs.
 
 ## Status
 
-- [ ] Step 1 — Record the demo
-  - [ ] Top-bar tweak (remove switchers + restart, add static account badge)
-  - [ ] Stage/role pre-configuration mechanism
-  - [ ] Record `launch`
-  - [ ] Record `day_3`
-  - [ ] Record `day_14`
-  - [ ] Record `completed`
+- [x] Step 1 — Record the demo
+  - [x] Top-bar tweak (remove switchers + restart, add static account badge)
+  - [x] Stage/role pre-configuration mechanism (`?act=` URL)
+  - [x] Record `launch`
+  - [x] Record `day_3`
+  - [x] Record `day_14`
+  - [x] Record `completed`
 - [ ] Step 2 — Replace selected mocks
+  - Plan being scoped by an external AI tool against `STEP2_BRIEF.md`.
 - [ ] Step 3 — Organize project for handoff

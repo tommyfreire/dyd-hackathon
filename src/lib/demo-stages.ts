@@ -69,10 +69,11 @@ export interface StageStateSnapshot {
   currentUserId: string;
   notifications: Notification[];
   /**
-   * Has the admin sent the latest audit snapshot to the Hype Bot? Used by the
-   * AI Agents page to flip Hype Bot output between trivial and insightful.
+   * Has the admin sent the latest audit snapshot to the Daremaster? Used by
+   * the AI Agents page to flip Daremaster output between trivial and
+   * insightful.
    */
-  hypeBotInsightSent?: boolean;
+  daremasterInsightSent?: boolean;
 }
 
 function clone<T>(v: T): T {
@@ -291,14 +292,14 @@ const COMPLETED_HOLD_TIGHT: FeedPost = {
   reactions: { fire: 10, clap: 7, rocket: 3, eyes: 14, trophy: 1 },
 };
 
-function buildFeed(stage: DemoStage, hypeBotInsightSent: boolean): FeedPost[] {
+function buildFeed(stage: DemoStage, daremasterInsightSent: boolean): FeedPost[] {
   switch (stage) {
     case "launch":
       return [LAUNCH_OPENER];
     case "day_3":
       return [DAY_3_PINNED, DAY_3_COMMENT_1, DAY_3_COMMENT_2, LAUNCH_OPENER];
     case "day_14": {
-      const top = hypeBotInsightSent ? DAY_14_PINNED_INSIGHT : DAY_14_PINNED_TRIVIAL;
+      const top = daremasterInsightSent ? DAY_14_PINNED_INSIGHT : DAY_14_PINNED_TRIVIAL;
       const seedById = (id: string) => clone(seedFeed).find((p) => p.id === id);
       const bob = seedById("fp-12");
       const alice = seedById("fp-7");
@@ -332,7 +333,7 @@ function buildFeed(stage: DemoStage, hypeBotInsightSent: boolean): FeedPost[] {
     case "completed":
       // Only the "hold tight" Daremaster post is pinned at the start of the
       // final stage. The launch opener (seed fp-1) is kept but unpinned. The
-      // winner announcement is created by the admin's Hype Bot flow.
+      // winner announcement is created by the admin's Daremaster flow.
       return [
         COMPLETED_HOLD_TIGHT,
         ...clone(seedFeed).map((p) => (p.id === "fp-1" ? { ...p, pinned: false } : p)),
@@ -344,7 +345,7 @@ function buildFeed(stage: DemoStage, hypeBotInsightSent: boolean): FeedPost[] {
 
 function buildAudits(stage: DemoStage, participants: Participant[]): Record<string, AuditResult> {
   // Audits become available at Day 14 (admin can configure formula + send
-  // snapshot to Hype Bot) and remain through Completed.
+  // snapshot to Daremaster) and remain through Completed.
   if (stage === "launch" || stage === "day_3") return {};
   const out: Record<string, AuditResult> = {};
   const contract = currentChallenge.auditContract;
@@ -423,16 +424,16 @@ function buildNotifications(stage: DemoStage, role: "admin" | "participant"): No
 export function buildSnapshot(stage: DemoStage, currentUserId: string): StageStateSnapshot {
   const participants = shapeParticipants(stage);
   const role = currentUserId === "u-admin" ? "admin" : "participant";
-  const hypeBotInsightSent = stage === "completed";
+  const daremasterInsightSent = stage === "completed";
   return {
     participants,
     ranking: buildRanking(stage, clone(participants)),
-    feed: buildFeed(stage, hypeBotInsightSent),
+    feed: buildFeed(stage, daremasterInsightSent),
     evidence: buildEvidence(stage),
     audits: buildAudits(stage, participants),
     challenge: buildChallenge(stage),
     currentUserId,
     notifications: buildNotifications(stage, role),
-    hypeBotInsightSent,
+    daremasterInsightSent,
   };
 }

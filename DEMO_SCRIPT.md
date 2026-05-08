@@ -18,10 +18,10 @@ Each stage is its own take. Set the URL at the top of the stage, hit record, do 
 > *The first thing the audience hears and sees is the Daremaster video. Click play immediately as the recording starts. No narration over it — let it captivate them. When you feel the hook has landed (full length is fine, or pause earlier if it drags), click pause. The avatar overlay snaps back to the opening frame. Take a small breath, then start.*
 
 **VO**
-> "Hello everyone! hope youre doing well. — what you just saw is the opening video for **DYD**. It's a platform for BairesDev to run internal growth challenges as friendly competitions. The **Daremaster** is sort of our mysterious narrator who sells whatever the current challenge is."
->"This one is the **Testimonial Hunt**. Employees will compete to collect as many client testimonials as possible. Sharing their story on how our company impacted on their business, but we'll see later on that quantity isn't wat matters the most to determine the winner.  
->"What we are seeing here is a participant's landing page. The full rules are down here. Rubric, deadlines, what counts as evidence. I'll skip the details. Of course I want in*, so I click **I Dare**…"
-> "…and there are obviously some terms I have to agree to and a dyd strike clause that if you submit no valid evidence, admins may issue a DYD Strike that can affect future challenge eligibility. So i accept and join, and i'm in. So here's the dashboard where I will upload my testimonies and theese three tabs on the left are unlocked now. My name is now in the Hype ranking, which is the live public leaderboard — based on whatever everyone self-reports, so anyone in the company can see how I'm doing. And a feed where everyone reacts and posts about the challenge.. let me throw a quick one in. The Daremaster will constantly be spicing things up here in the feed.
+> "Hello everyone! hope youre doing well. — what you just saw is the **Daremaster** that sort of our mysterious narrator who sells whatever the current challenge is."
+>"This one is the **Testimonial Hunt**. 
+>"What we are seeing here is a participant's landing page. The full rules are down here. Rubric, deadlines, what counts as valid evidence. I'll skip the details. Of course I want in*, so I click **I Dare**…"
+> "…and there's a clause that if you submit no valid evidence, admins may issue a DYD Strike that can affect future challenge eligibility... So i accept and join, and i'm in. So here's the dashboard where I will upload my videos... and there is an audit agent, which we will then enter in more detail, who's job is to evaluate the quality of the evidence.There's a **quality checklist** which basically tells me upfront what the Audit Agent will be looking for in each testimonial... and theese other 2 tabs on the left are unlocked now. My name is now in the Hype ranking, which is the live public leaderboard — based on whatever everyone self-reports, so anyone in the company can see how I'm doing. And a feed where everyone reacts and posts about the challenge. The Daremaster will constantly be spicing things up here in the feed.
 
 > *Cut.*
 
@@ -35,9 +35,7 @@ Each stage is its own take. Set the URL at the top of the stage, hit record, do 
 > *Click "Open my dashboard". Land on the dashboard.*
 
 **VO**
-> "Three days in. I just got my second testimonial from a client that agreed to record on camera. So I'm on my dashboard now. Up top I've got my current Hype rank which isn't too significant yet. There is an audit agent, which we will then enter in more detail, who's job is to evaluate the quality of the evidence the participants upload
-
-> "…and over here there's a **quality checklist** — it basically tells me upfront what the Audit Agent will be looking for in each testimonial. *It ticks off as I fill the form below.*"
+> "Three days in. I just got my second testimonial from a client that agreed to record on camera. So I'm on my dashboard now. Up top I've got my current Hype rank which isn't too significant yet. 
 
 > *Scroll down to the form. Fill each field as you narrate — let the pace of your voice match the typing.*
 
@@ -83,13 +81,9 @@ Each stage is its own take. Set the URL at the top of the stage, hit record, do 
 > *Click the bell. Click the "Audit Agent ready for final assessments" notification. Lands on Admin Review (full version).*
 
 **VO**
-> "Challenge over. I've got a notification waiting — the Audit Agent has done its fial pass.
-> "I step through the submissions. The Audit Agent shows its reasoning — what it flagged, what it counted"
-> "If I disagree with one of the scores, I can override it. Once I'm happy with the scores I accept them and get the final ranking. So patrick wins.
+> "Challenge over.  Audit Agent has done its final pass and is ready for final assesssments. Once I'm happy with the scores I accept them and get the final ranking. So patrick wins.
 
-> "And now my favorite part. There's a fourth agent — the **Growth Insight Extractor**. It was locked until now, because there was no approved results to mine."
-
-> "It mines the approved corpus and produces a tight bundle — three pull-quotes, a few case-study leads, a handful of sales snippets, and two LinkedIn drafts. *Each one pulled from a real testimonial, not a generic tagline.* That's the part that pays the company back. 
+> "And now my favorite part. There's a fourth agent — the **Growth Insight Extractor**. It was locked until now, because there was no approved results to mine. For this particular challenge it was designed to generate pull-quotes, case-study leads, sales snippets and LinkedIn drafts. That's the part that pays the company back. 
 > "Of course we can send this to the daremaster for one last post announcing the winner and linking straight to the insights, so anyone in the company can use them."
 
 > *Click into Challenge Designer in the sidebar. Type the one-line idea: `A LinkedIn post about a deal we just closed.`*
@@ -98,12 +92,11 @@ Each stage is its own take. Set the URL at the top of the stage, hit record, do 
 > "And then — the loop closes with the **Challenge Designer**.
 > where we input a short idea on what we imagine the next challenge to be, and the next dare drafts itself. Rubric, deadlines, reward, audit contract. All of it."
 
-**VO — close**
-> "DYD isn't one challenge. It's the engine." the game is what makes people show up, and the AI is what makes it scale to the whole company."
-
 > *Cut. Hold the final frame for a second before stopping.*
 
 ---
+
+Idea I removed from the script to include in the project written presentation: "DYD isn't one challenge. It's the engine." the game is what makes people show up, and the AI is what makes it scale to the whole company."
 
 ## Recording notes
 

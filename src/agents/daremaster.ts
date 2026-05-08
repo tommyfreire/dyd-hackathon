@@ -1,8 +1,9 @@
-// DYD — Hype Bot
+// DYD — Daremaster
 //
 // Reads the current world (challenge state, ranking, deadlines) and emits a
 // single contextual feed post. The bot's job is social momentum — it should
-// feel like an in-the-moment broadcaster, not a scheduled cron.
+// feel like an in-the-moment broadcaster, not a scheduled cron. Same persona
+// as the launch-video narrator; one voice across video and feed.
 //
 // The set of triggers below is intentionally small. Each one is a template
 // keyed off a clear narrative beat. The trigger we pick depends on which
@@ -13,9 +14,9 @@
 // to the model that takes the snapshot and returns `{trigger, content}` in
 // the same shape.
 
-import type { HypeBotPost, HypeBotSnapshot } from "./types";
+import type { DaremasterPost, DaremasterSnapshot } from "./types";
 
-const TEMPLATES: Record<HypeBotPost["trigger"], (snap: HypeBotSnapshot) => string> = {
+const TEMPLATES: Record<DaremasterPost["trigger"], (snap: DaremasterSnapshot) => string> = {
   launch: (s) =>
     `A new DYD has been unlocked. ${formatTitle(s)}. The Dare is open for ` +
     `${Math.max(s.daysToSubmissionDeadline, 0)} days.`,
@@ -48,7 +49,7 @@ const TEMPLATES: Record<HypeBotPost["trigger"], (snap: HypeBotSnapshot) => strin
     `${formatDays(s.daysToSubmissionDeadline)} left. The Dare is still open.`,
 };
 
-const TRIGGER_REACTIONS: Record<HypeBotPost["trigger"], HypeBotPost["reactions"]> = {
+const TRIGGER_REACTIONS: Record<DaremasterPost["trigger"], DaremasterPost["reactions"]> = {
   launch:                    { fire: 124, clap: 87, rocket: 54, eyes: 211, trophy: 18 },
   registration_confirmation: { fire: 22,  clap: 14, rocket: 6,  eyes: 71,  trophy: 0  },
   early_quiet:               { fire: 8,   clap: 3,  rocket: 2,  eyes: 41,  trophy: 0  },
@@ -66,7 +67,7 @@ const TRIGGER_REACTIONS: Record<HypeBotPost["trigger"], HypeBotPost["reactions"]
  * not just the first matching one. Audit signals (quality threats) trump
  * generic ranking noise; deadline pressure trumps a quiet board.
  */
-export function pickTrigger(s: HypeBotSnapshot): HypeBotPost["trigger"] {
+export function pickTrigger(s: DaremasterSnapshot): DaremasterPost["trigger"] {
   if (s.challenge.status === "draft") return "launch";
 
   const noProgress = s.ranking.every((r) => r.selfReportedValue === 0);
@@ -92,11 +93,11 @@ export function pickTrigger(s: HypeBotSnapshot): HypeBotPost["trigger"] {
 /**
  * Generate a feed post from the current snapshot. Pure function — no I/O.
  *
- * @returns A `HypeBotPost` ready to be added to the feed. The caller decides
- *          whether to post it (e.g. the admin clicking "Generate next post"
- *          on the agents page).
+ * @returns A `DaremasterPost` ready to be added to the feed. The caller
+ *          decides whether to post it (e.g. the admin clicking "Generate
+ *          next post" on the agents page).
  */
-export function generate(snapshot: HypeBotSnapshot): HypeBotPost {
+export function generate(snapshot: DaremasterSnapshot): DaremasterPost {
   const trigger = pickTrigger(snapshot);
   return {
     trigger,
@@ -111,7 +112,7 @@ function firstName(full?: string): string {
   return (full ?? "Someone").split(" ")[0];
 }
 
-function formatTitle(s: HypeBotSnapshot): string {
+function formatTitle(s: DaremasterSnapshot): string {
   return s.challenge.title;
 }
 
@@ -127,7 +128,7 @@ function formatDays(d: number): string {
  * higher than the leader's (or whose audit ≥ 80 when the leader's < 60). That's
  * the "quality threat" signal Patrick triggers against Bob.
  */
-function findQualityThreat(s: HypeBotSnapshot) {
+function findQualityThreat(s: DaremasterSnapshot) {
   const leader = s.ranking[0];
   if (!leader) return null;
   const leaderAudit = leader.auditScore ?? 0;

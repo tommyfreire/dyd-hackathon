@@ -545,7 +545,7 @@ export const agentSnapshots: AgentSnapshot[] = [
     lastActionAt: "2026-04-28T08:42:00-03:00",
   },
   {
-    id: "hype_bot",
+    id: "daremaster",
     name: "Daremaster",
     purpose:
       "Keeps the challenge socially alive. Posts leaderboard updates, deadline reminders, and competitive commentary in the feed — the same voice that opens every Dare.",

@@ -29,7 +29,7 @@ export function InsightsPage() {
     }
   };
 
-  const sendToHypeBot = async () => {
+  const sendToDaremaster = async () => {
     setSending(true);
     try {
       await sendGrowthInsightSnapshot();
@@ -40,7 +40,7 @@ export function InsightsPage() {
     }
   };
 
-  // Track whether the bundle already went to Hype Bot (e.g. on revisit).
+  // Track whether the bundle already went to the Daremaster (e.g. on revisit).
   useEffect(() => {
     getGrowthInsightSent().then(setSentToHype);
   }, []);
@@ -140,7 +140,7 @@ export function InsightsPage() {
                 <Icon name="check" size={12} /> Sent to Daremaster
               </span>
             ) : (
-              <button className="btn btn-primary btn-sm" disabled={sending} onClick={sendToHypeBot}>
+              <button className="btn btn-primary btn-sm" disabled={sending} onClick={sendToDaremaster}>
                 <Icon name="send" size={12} /> {sending ? "Sending…" : "Send insights to Daremaster"}
               </button>
             )}

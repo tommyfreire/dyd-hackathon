@@ -10,17 +10,20 @@
 //   <stage>   ∈ { launch, day_3, day_14, completed }
 //   <flags>   comma-separated subset of { hype, growth }
 //
+// The `hype` flag name is preserved for the user's URL muscle memory; it
+// flips the Daremaster's audit-snapshot-sent flag (daremasterInsightSent).
+//
 // Examples:
 //   /?act=tomi:launch
 //   /?act=gabo:day_14
-//   /?act=gabo:day_14:hype           — also flips hypeBotInsightSent
+//   /?act=gabo:day_14:hype           — also flips daremasterInsightSent
 //   /?act=gabo:completed:hype,growth — flips both handoff flags
 
 import {
   resetState,
   setDemoStage,
   setRole as apiSetRole,
-  sendHypeBotSnapshot,
+  sendDaremasterSnapshot,
   sendGrowthInsightSnapshot,
 } from "./api";
 import { coerceStage } from "./demo-stages";
@@ -59,7 +62,7 @@ export function applyActFromUrl(): void {
   apiSetRole(role);
   window.localStorage.setItem(ROLE_KEY, role);
 
-  if (flags.includes("hype")) sendHypeBotSnapshot();
+  if (flags.includes("hype")) sendDaremasterSnapshot();
   if (flags.includes("growth")) sendGrowthInsightSnapshot();
 
   url.searchParams.delete("act");
