@@ -8,13 +8,12 @@ import type {
   Participant,
   RankingEntry,
   EvidenceSubmission,
-  AuditResult,
   FeedPost,
   AgentSnapshot,
-  GrowthAssetBundle,
   Notification,
   User,
 } from "./types";
+import type { EvidenceItem, EvidencePacket } from "@/agents/types";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Challenge
@@ -28,10 +27,10 @@ export const currentChallenge: Challenge = {
   description:
     "Leadership has unlocked the first DYD. Your mission: collect valuable client testimonials that prove BairesDev's real business impact. The catch — quantity alone won't win this. Final results are decided after human review of evidence quality.",
   sponsor: "Office of the CEO",
-  reward: "Trip to Buenos Aires",
+  reward: "Trip for 2 to Bahamas",
   rewardSubtitle: "+ dinner with leadership",
-  registrationDeadline: "2026-05-12T23:59:00-03:00",
-  submissionDeadline: "2026-05-26T23:59:00-03:00",
+  registrationDeadline: "2026-05-18T23:59:00-03:00",
+  submissionDeadline: "2026-06-29T23:59:00-03:00",
   status: "open",
   primaryMetricLabel: "Number of testimonials",
   primaryMetricKey: "testimonial_count",
@@ -39,18 +38,19 @@ export const currentChallenge: Challenge = {
     "This ranking is based on self-reported progress. Final results may change after human review.",
   rules: [
     "Register before the registration deadline. Late entries are not accepted.",
-    "Self-report your progress at any time. The Hype Ranking updates live.",
-    "Submit evidence before the submission deadline.",
-    "Quality matters more than quantity. Final ranking is decided after review.",
-    "If you register and submit no valid evidence, admins may issue a DYD Strike.",
+    "Once registered, you can self-report your progress at any time. The Hype Ranking updates live based on self-reported progress.",
+    "Submit your evidence before the submission deadline.",
+    "The Hype Ranking is not the final ranking. It is only a live, self-reported board designed to create friendly competition.",
+    "Quality matters more than quantity. Final results are decided after human admin review, assisted by the AI Audit Assistant.",
+    "If you register and submit no valid evidence, admins may issue a DYD Strike that can affect your eligibility for future challenges.",
   ],
   evidenceRequirements: [
     "Client name",
     "Client company",
     "Client role",
-    "Permission to use testimonial",
-    "Business impact summary",
-    "Uploaded evidence (video / zip / text)",
+    "Testimonial format: video, written quote, ZIP file, or text note",
+    "Permission to use the testimonial",
+    "Short business impact summary",
   ],
   auditContract: {
     challengeId: "dyd-001",
@@ -95,11 +95,16 @@ export const currentChallenge: Challenge = {
 // Users (for the role switcher)
 // ─────────────────────────────────────────────────────────────────────────────
 
+// The role-switcher in the top bar maps each role to one of these users.
+// "participant" → Tomi (demo protagonist)
+// "admin"       → Gabo (admin)
+// Bob, Patrick, Alice, Charlie are competitors in the ranking — not viewer identities.
 export const users: Record<string, User> = {
-  "u-bob": { id: "u-bob", name: "Bob Martinez", role: "participant", jobTitle: "Account Executive" },
-  "u-admin": { id: "u-admin", name: "Sofia Reyes", role: "admin", jobTitle: "Growth Lead" },
-  "u-sponsor": { id: "u-sponsor", name: "Diego Aguirre", role: "sponsor", jobTitle: "CEO" },
-  "u-spectator": { id: "u-spectator", name: "Maya Iverson", role: "spectator", jobTitle: "Software Engineer II" },
+  "u-sofia":     { id: "u-sofia",     name: "Tomi",            role: "participant", jobTitle: "Customer Success Manager" },
+  "u-admin":     { id: "u-admin",     name: "Gabo",            role: "admin",       jobTitle: "Growth Operations Lead" },
+  // Competitors — referenced from `participants` but never swapped to via the role switcher.
+  "u-bob":       { id: "u-bob",       name: "Bob Martinez",    role: "participant", jobTitle: "Account Executive" },
+  "u-patrick":   { id: "u-patrick",   name: "Patrick Olawale", role: "participant", jobTitle: "Delivery Manager" },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -118,6 +123,18 @@ export const participants: Participant[] = [
     evidenceStatus: "pending_review",
     hypeRank: 1,
     badges: ["On fire", "Needs review"],
+  },
+  {
+    id: "p-sofia",
+    userId: "u-sofia",
+    name: "Tomi",
+    role: "Customer Success Manager",
+    avatarInitials: "TM",
+    registered: true,
+    selfReportedValue: 3,
+    evidenceStatus: "uploaded",
+    hypeRank: 5,
+    badges: ["First mover"],
   },
   {
     id: "p-patrick",
@@ -224,76 +241,140 @@ export const rankingEntries: RankingEntry[] = participants.map((p) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Audit results — full for top 4, partial for the rest
+// Evidence packets — STRUCTURED INPUT to the AI Audit Assistant
+//
+// These are the only "audit-relevant" facts about each participant's
+// submission. The Audit Assistant agent (src/agents/audit-assistant.ts) reads
+// these packets, applies the challenge's Audit Contract, and computes the
+// quality score, validated count, multiplier, final score, flags, and
+// recommendation. Nothing audit-related is hardcoded — the math falls out of
+// these inputs.
+//
+// The demo invariant — Bob declares 18 but Patrick wins after review — is
+// shaped by the field values below. See src/agents/audit-assistant.ts for the
+// scoring functions; see AGENTS.md for the full picture.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const auditResults: Record<string, AuditResult> = {
-  "p-bob": {
-    participantId: "p-bob",
-    declaredMetric: 18,
-    validatedItems: 11,
-    rejectedItems: 7,
-    qualityScore: 46,
-    qualityMultiplier: 0.55,
-    suggestedFinalScore: 6.05,
-    flags: [
-      "7 testimonials under minimum quality threshold",
-      "4 missing permission confirmation",
-      "Weak business impact in several testimonials",
-    ],
-    recommendation: "Needs manual review",
-    adminStatus: "pending",
-    rubricBreakdown: [
-      { key: "clarity", score: 12, note: "Mostly clear, some rambling" },
-      { key: "businessImpact", score: 9, note: "Vague outcomes in 6 of 18" },
-      { key: "clientRelevance", score: 14 },
-      { key: "specificity", score: 8, note: "Few concrete metrics" },
-      { key: "permissionCompleteness", score: 3, note: "4 missing permission" },
-    ],
-  },
-  "p-patrick": {
-    participantId: "p-patrick",
-    declaredMetric: 9,
-    validatedItems: 9,
-    rejectedItems: 0,
-    qualityScore: 91,
-    qualityMultiplier: 1.15,
-    suggestedFinalScore: 10.35,
-    flags: [],
-    recommendation: "Strong candidate for winner",
-    adminStatus: "pending",
-    rubricBreakdown: [
-      { key: "clarity", score: 19, note: "Polished and concise" },
-      { key: "businessImpact", score: 28, note: "Concrete numbers in 8 of 9" },
-      { key: "clientRelevance", score: 18 },
-      { key: "specificity", score: 17 },
-      { key: "permissionCompleteness", score: 9, note: "All permissions secured" },
-    ],
-  },
-  "p-alice": {
-    participantId: "p-alice",
-    declaredMetric: 7,
-    validatedItems: 6,
-    rejectedItems: 1,
-    qualityScore: 78,
-    qualityMultiplier: 1.0,
-    suggestedFinalScore: 7.8,
-    flags: ["1 missing permission confirmation"],
-    recommendation: "Good submission",
-    adminStatus: "pending",
-  },
-  "p-charlie": {
-    participantId: "p-charlie",
-    declaredMetric: 6,
-    validatedItems: 6,
-    rejectedItems: 0,
-    qualityScore: 88,
-    qualityMultiplier: 1.1,
-    suggestedFinalScore: 7.92,
-    flags: [],
-    recommendation: "Dark horse candidate",
-    adminStatus: "pending",
-  },
+/** Build N items with shared properties. Used to keep the seed compact. */
+function makeItems(
+  prefix: string,
+  count: number,
+  template: Omit<EvidenceItem, "id">
+): EvidenceItem[] {
+  return Array.from({ length: count }, (_, i) => ({
+    ...template,
+    id: `${prefix}-${i + 1}`,
+  }));
+}
+
+const BOB_ITEMS: EvidenceItem[] = [
+  // 3 items too short — flagged for testimonial_under_10_seconds
+  ...makeItems("ev-bob-short", 3, {
+    clientName: "Various", clientCompany: "Acme Co", clientRole: "Buyer",
+    lengthSeconds: 8,
+    hasPermission: true, hasBusinessImpact: false, hasMetric: false,
+    snippet: "Quick clip — no real content.",
+    impactSummary: "Quick mention.",
+  }),
+  // 4 items missing permission — flagged for missing_client_permission
+  ...makeItems("ev-bob-noperm", 4, {
+    clientName: "Anonymous", clientCompany: "Various Clients", clientRole: "VP",
+    lengthSeconds: 80,
+    hasPermission: false, hasBusinessImpact: true, hasMetric: false,
+    snippet: "Client said the team was great but never confirmed in writing.",
+    impactSummary: "They were happy with the team.",
+  }),
+  // 5 items rambly — over 180s, lose clarity points but still validate.
+  // (They have business impact, so they don't trip the unclear-impact red flag.)
+  ...makeItems("ev-bob-rambly", 5, {
+    clientName: "Several speakers", clientCompany: "Northwind", clientRole: "",
+    lengthSeconds: 240,
+    hasPermission: true, hasBusinessImpact: true, hasMetric: false,
+    snippet: "Long meandering testimonial covering several topics without a clear point.",
+    impactSummary: "They liked working with us overall.",
+  }),
+  // 4 items missing the business-outcome statement — flagged unclear_business_impact
+  // but still NOT discarded if you also count them as validated... wait, they ARE
+  // discarded by red-flag logic. So this group is the "vague outcomes in 6 of 18"
+  // notes: the 5 rambly + these 4 vague items lose specificity but only the 4
+  // here lose validation.
+  // To keep validated=11, the only flagged groups are short (3) + no-perm (4).
+  // These 4 items keep impact=true so they stay validated.
+  ...makeItems("ev-bob-decent", 4, {
+    clientName: "Marcus Lee", clientCompany: "Wells Fargo", clientRole: "VP Engineering",
+    lengthSeconds: 90,
+    hasPermission: true, hasBusinessImpact: true, hasMetric: false,
+    snippet: "BairesDev shipped well and we were satisfied.",
+    impactSummary: "Helped us ship faster.",
+  }),
+  // 2 items polished — has metric AND full impact summary (drives specificity)
+  ...makeItems("ev-bob-polished", 2, {
+    clientName: "Hannah Voss", clientCompany: "Monolith Pharma", clientRole: "CTO",
+    lengthSeconds: 120,
+    hasPermission: true, hasBusinessImpact: true, hasMetric: true,
+    snippet: "BairesDev rationalized 4 years of tech debt in 6 months and we're shipping weekly now.",
+    impactSummary: "4 years of tech debt cleaned up in 6 months — shipping weekly across three product lines.",
+  }),
+];
+
+const PATRICK_ITEMS: EvidenceItem[] = [
+  // 7 polished items — the bulk of Patrick's submission.
+  ...makeItems("ev-pat", 7, {
+    clientName: "Marcus Lee", clientCompany: "Wells Fargo", clientRole: "VP Engineering",
+    lengthSeconds: 110,
+    hasPermission: true, hasBusinessImpact: true, hasMetric: true,
+    snippet: "Lending platform shipped two quarters ahead of plan; $14M in originations unlocked.",
+    impactSummary: "Lending platform shipped two quarters ahead of plan — $14M in originations unlocked in the first 90 days.",
+  }),
+  // 1 short clip — under the clarity sweet spot, still validates (>10s).
+  ...makeItems("ev-pat-short", 1, {
+    clientName: "Marcus Lee", clientCompany: "Wells Fargo", clientRole: "VP Engineering",
+    lengthSeconds: 22,
+    hasPermission: true, hasBusinessImpact: true, hasMetric: true,
+    snippet: "Quick clip — lending platform shipped early, $14M unlocked.",
+    impactSummary: "Lending platform shipped early — $14M in originations unlocked in 90 days.",
+  }),
+  // 1 item without a hard metric — softens specificity and trims businessImpact.
+  ...makeItems("ev-pat-soft", 1, {
+    clientName: "Marcus Lee", clientCompany: "Wells Fargo", clientRole: "VP Engineering",
+    lengthSeconds: 110,
+    hasPermission: true, hasBusinessImpact: true, hasMetric: false,
+    snippet: "Working with BairesDev was the difference between shipping and not shipping.",
+    impactSummary: "They shipped faster than expected — hard to put one clean number on it.",
+  }),
+];
+
+const ALICE_ITEMS: EvidenceItem[] = [
+  ...makeItems("ev-alice-clean", 6, {
+    clientName: "Priya Banerjee", clientCompany: "Helio Health", clientRole: "VP Product",
+    lengthSeconds: 95,
+    hasPermission: true, hasBusinessImpact: true, hasMetric: true,
+    snippet: "Embedded engineering across 30-person product org, zero attrition over 18 months.",
+    impactSummary: "Five engineers embedded across our 30-person product org with zero attrition over 18 months.",
+  }),
+  // 1 item missing permission — flagged
+  ...makeItems("ev-alice-noperm", 1, {
+    clientName: "Anonymous", clientCompany: "Healthcare Co", clientRole: "Director",
+    lengthSeconds: 100,
+    hasPermission: false, hasBusinessImpact: true, hasMetric: true,
+    snippet: "Reduced onboarding time by 60% but client never signed off.",
+    impactSummary: "60% reduction in customer onboarding time, attributed to BairesDev's platform work.",
+  }),
+];
+
+const CHARLIE_ITEMS: EvidenceItem[] = makeItems("ev-charlie", 6, {
+  clientName: "Tobias Engle", clientCompany: "Northwind Logistics", clientRole: "VP Engineering",
+  lengthSeconds: 100,
+  hasPermission: true, hasBusinessImpact: true, hasMetric: true,
+  snippet: "Asked us about the business outcome before writing any code — that was the differentiator.",
+  impactSummary: "Tried four other vendors before BairesDev — only team that asked about business outcomes first.",
+});
+
+export const evidencePackets: Record<string, EvidencePacket> = {
+  "p-bob":     { participantId: "p-bob",     declaredMetric: 18, items: BOB_ITEMS },
+  "p-patrick": { participantId: "p-patrick", declaredMetric: 9,  items: PATRICK_ITEMS },
+  "p-alice":   { participantId: "p-alice",   declaredMetric: 7,  items: ALICE_ITEMS },
+  "p-charlie": { participantId: "p-charlie", declaredMetric: 6,  items: CHARLIE_ITEMS },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -330,19 +411,19 @@ export const feedPosts: FeedPost[] = [
     authorRole: "DYD Bot",
     pinned: true,
     content:
-      "A new DYD has been unlocked. DYD #001 — The Testimonial Hunt is now open. Trip to Buenos Aires + dinner with leadership goes to the participant whose evidence holds up under audit. The Dare is open for 14 days.",
+      "A new DYD has been unlocked. DYD #001 — The Testimonial Hunt is now open. Trip for 2 to Bahamas + dinner with leadership goes to the participant whose evidence holds up under audit. The Dare is open for 14 days.",
     createdAt: "2026-04-28T09:00:00-03:00",
-    reactions: { fire: 124, clap: 87, rocket: 54, eyes: 211, trophy: 18 },
+    reactions: { fire: 11, clap: 8, rocket: 4, eyes: 11, trophy: 2 },
   },
   {
     id: "fp-2",
-    author: "Hype Bot",
+    author: "Daremaster",
     authorType: "bot",
     authorRole: "DYD Bot",
     content:
       "Bob is leading with 18 testimonials. But remember: quality can flip the board. The audit hasn't started yet.",
     createdAt: "2026-05-05T11:42:00-03:00",
-    reactions: { fire: 41, clap: 12, rocket: 4, eyes: 89, trophy: 0 },
+    reactions: { fire: 9, clap: 4, rocket: 2, eyes: 10, trophy: 0 },
   },
   {
     id: "fp-3",
@@ -352,17 +433,17 @@ export const feedPosts: FeedPost[] = [
     content:
       "Just uploaded 9 testimonials. Each one has the client on camera, with explicit permission, naming the dollar impact. I'd rather submit fewer that hold up than chase a number.",
     createdAt: "2026-05-05T14:17:00-03:00",
-    reactions: { fire: 67, clap: 92, rocket: 34, eyes: 12, trophy: 11 },
+    reactions: { fire: 10, clap: 13, rocket: 5, eyes: 5, trophy: 2 },
   },
   {
     id: "fp-4",
-    author: "Hype Bot",
+    author: "Daremaster",
     authorType: "bot",
     authorRole: "DYD Bot",
     content:
       "Patrick just uploaded new evidence. The leaderboard may not tell the full story.",
     createdAt: "2026-05-05T14:31:00-03:00",
-    reactions: { fire: 22, clap: 8, rocket: 2, eyes: 73, trophy: 0 },
+    reactions: { fire: 8, clap: 3, rocket: 1, eyes: 13, trophy: 0 },
   },
   {
     id: "fp-5",
@@ -372,17 +453,17 @@ export const feedPosts: FeedPost[] = [
     content:
       "Watching this from the sidelines and the Bob vs Patrick situation is the best thing internal comms has shipped in two years.",
     createdAt: "2026-05-05T16:02:00-03:00",
-    reactions: { fire: 38, clap: 51, rocket: 6, eyes: 9, trophy: 0 },
+    reactions: { fire: 9, clap: 11, rocket: 2, eyes: 5, trophy: 1 },
   },
   {
     id: "fp-6",
-    author: "Hype Bot",
+    author: "Daremaster",
     authorType: "bot",
     authorRole: "DYD Bot",
     content:
       "Charlie is a dark horse. Fewer testimonials, but the ones uploaded so far are clean. Quality multiplier looks favorable.",
     createdAt: "2026-05-06T08:55:00-03:00",
-    reactions: { fire: 28, clap: 14, rocket: 9, eyes: 41, trophy: 2 },
+    reactions: { fire: 9, clap: 5, rocket: 3, eyes: 10, trophy: 1 },
   },
   {
     id: "fp-7",
@@ -392,7 +473,7 @@ export const feedPosts: FeedPost[] = [
     content:
       "Got two CSMs from healthcare on video this morning. Permissions in writing. Slow and steady.",
     createdAt: "2026-05-06T11:20:00-03:00",
-    reactions: { fire: 19, clap: 27, rocket: 4, eyes: 6, trophy: 1 },
+    reactions: { fire: 7, clap: 9, rocket: 2, eyes: 6, trophy: 1 },
   },
   {
     id: "fp-8",
@@ -402,17 +483,17 @@ export const feedPosts: FeedPost[] = [
     content:
       "Reminder: the audit contract scores Specificity and Business Impact at 50 points combined. \"They were great\" doesn't move the needle — name the outcome, the metric, and the timeframe.",
     createdAt: "2026-05-07T10:00:00-03:00",
-    reactions: { fire: 45, clap: 73, rocket: 8, eyes: 22, trophy: 0 },
+    reactions: { fire: 10, clap: 13, rocket: 3, eyes: 4, trophy: 0 },
   },
   {
     id: "fp-9",
-    author: "Hype Bot",
+    author: "Daremaster",
     authorType: "bot",
     authorRole: "DYD Bot",
     content:
       "48 hours left to register. The Dare is still open.",
     createdAt: "2026-05-10T09:00:00-03:00",
-    reactions: { fire: 14, clap: 6, rocket: 3, eyes: 31, trophy: 0 },
+    reactions: { fire: 6, clap: 4, rocket: 2, eyes: 10, trophy: 0 },
   },
   {
     id: "fp-10",
@@ -426,13 +507,13 @@ export const feedPosts: FeedPost[] = [
   },
   {
     id: "fp-11",
-    author: "Hype Bot",
+    author: "Daremaster",
     authorType: "bot",
     authorRole: "DYD Bot",
     content:
       "The Hype Ranking is heating up. Final audit will decide the real winner.",
     createdAt: "2026-05-11T09:00:00-03:00",
-    reactions: { fire: 33, clap: 11, rocket: 7, eyes: 56, trophy: 0 },
+    reactions: { fire: 8, clap: 5, rocket: 3, eyes: 12, trophy: 0 },
   },
   {
     id: "fp-12",
@@ -442,7 +523,7 @@ export const feedPosts: FeedPost[] = [
     content:
       "18 testimonials in. Going for 25.",
     createdAt: "2026-05-11T14:12:00-03:00",
-    reactions: { fire: 71, clap: 22, rocket: 14, eyes: 45, trophy: 3 },
+    reactions: { fire: 11, clap: 7, rocket: 4, eyes: 9, trophy: 1 },
   },
 ];
 
@@ -459,15 +540,15 @@ export const agentSnapshots: AgentSnapshot[] = [
     sampleInput:
       "I want employees to collect client testimonials for marketing.",
     latestOutput:
-      "Generated DYD #001 — The Testimonial Hunt. Defined 5-criteria audit contract, 14-day window, evidence requirements, and Hype Bot launch script.",
+      "Generated DYD #001 — The Testimonial Hunt. Defined 5-criteria audit contract, 14-day window, evidence requirements, and Daremaster launch script.",
     status: "ready",
     lastActionAt: "2026-04-28T08:42:00-03:00",
   },
   {
     id: "hype_bot",
-    name: "Hype Bot",
+    name: "Daremaster",
     purpose:
-      "Keeps the challenge socially alive. Posts leaderboard updates, deadline reminders, and competitive commentary in the feed.",
+      "Keeps the challenge socially alive. Posts leaderboard updates, deadline reminders, and competitive commentary in the feed — the same voice that opens every Dare.",
     sampleInput: "Trigger: Patrick uploaded new evidence.",
     latestOutput:
       "Posted: \"Patrick just uploaded new evidence. The leaderboard may not tell the full story.\"",
@@ -498,112 +579,10 @@ export const agentSnapshots: AgentSnapshot[] = [
   },
 ];
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Growth assets bundle (post-challenge insights)
-// ─────────────────────────────────────────────────────────────────────────────
-
-export const growthAssets: GrowthAssetBundle = {
-  challengeId: "dyd-001",
-  totals: {
-    submitted: 34,
-    approved: 21,
-    rejected: 13,
-    quotes: 6,
-    caseStudies: 3,
-    snippets: 5,
-    linkedinPosts: 4,
-  },
-  topQuotes: [
-    {
-      quote:
-        "BairesDev shipped our lending platform two quarters ahead of plan. We unlocked $14M in originations we'd otherwise have left on the table.",
-      client: "Marcus Lee",
-      company: "Wells Fargo",
-    },
-    {
-      quote:
-        "We hired BairesDev to clean up a 4-year tech debt mess. Six months later we're shipping weekly. They're now embedded across three of our product lines.",
-      client: "Hannah Voss",
-      company: "Monolith Pharma",
-    },
-    {
-      quote:
-        "We tried four other vendors before BairesDev. They were the only team that asked us about the business outcome before they wrote any code.",
-      client: "Tobias Engle",
-      company: "Northwind Logistics",
-    },
-    {
-      quote:
-        "Their engineers don't feel like contractors. They argue with us. They push back. That's how we know they're invested.",
-      client: "Priya Banerjee",
-      company: "Helio Health",
-    },
-    {
-      quote:
-        "We cut our infra costs by 38% in the first quarter after the platform rebuild.",
-      client: "Daniel Cho",
-      company: "Stripe-adjacent fintech",
-    },
-    {
-      quote:
-        "BairesDev's team scales up and down without the contract drama we'd had with every previous partner.",
-      client: "Marisa Quinn",
-      company: "Acuity Insurance",
-    },
-  ],
-  caseStudies: [
-    {
-      title: "Wells Fargo — Lending platform, two quarters early",
-      summary: "$14M in originations unlocked, modernization of a 12-year-old monolith.",
-      client: "Wells Fargo",
-    },
-    {
-      title: "Monolith Pharma — From tech debt to weekly releases",
-      summary: "4 years of accreted complexity rationalized in 6 months. Three product lines now staffed.",
-      client: "Monolith Pharma",
-    },
-    {
-      title: "Helio Health — Embedded engineering as a partnership model",
-      summary: "5 BairesDev engineers integrated into a 30-person product org. Zero attrition over 18 months.",
-      client: "Helio Health",
-    },
-  ],
-  snippets: [
-    { tag: "sales", text: "Our average client ships 2.1 quarters ahead of their original roadmap after embedding BairesDev engineers." },
-    { tag: "sales", text: "38% average infra cost reduction following a BairesDev platform rebuild." },
-    { tag: "sales", text: "Zero contractor attrition across our top 20 accounts in the last 18 months." },
-    { tag: "marketing", text: "BairesDev: the team your engineers argue with — and that's the point." },
-    { tag: "marketing", text: "We don't ship code until we understand the business outcome." },
-  ],
-  linkedinPosts: [
-    {
-      title: "What 21 client testimonials taught us in two weeks",
-      body:
-        "We ran an internal challenge. 47 employees. 34 testimonials submitted. 21 approved. Six emerged that we'd put on a billboard. The pattern was unanimous: clients don't talk about our code. They talk about the time we saved them, the money we unlocked, and the meetings we don't have anymore.",
-    },
-    {
-      title: "Why we let our engineers argue with our clients",
-      body:
-        "A direct quote from a Helio Health VP this week: \"Their engineers don't feel like contractors. They argue with us. They push back.\" That's the bar.",
-    },
-    {
-      title: "Two quarters ahead of plan",
-      body:
-        "Wells Fargo's lending platform launched two quarters early. The team was 60% BairesDev. The unlocked originations: $14M.",
-    },
-    {
-      title: "The DYD experiment",
-      body:
-        "We turned testimonial-collection into an internal competition with a Hype leaderboard, AI-assisted audits, and a real reward at the end. 21 marketing-ready assets in 14 days. Here's how.",
-    },
-  ],
-  campaignAngles: [
-    "Outcome-first engineering — not vendor work, partnership work.",
-    "Time saved is the new pricing axis — not headcount.",
-    "Embedded teams scale without contract drama.",
-    "Engineers who argue with you are engineers who care.",
-  ],
-};
+// NOTE: Growth assets are NOT seeded here. The Growth Insight Extractor agent
+// (src/agents/insight-extractor.ts) computes the asset bundle live from the
+// approved evidence packets. See `getGrowthAssets()` in src/lib/api.ts for
+// the wiring.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Notifications
@@ -613,7 +592,7 @@ export const notifications: Notification[] = [
   {
     id: "n-1",
     title: "A new DYD has been unlocked.",
-    body: "DYD #001 — The Testimonial Hunt. Trip to Buenos Aires + dinner with leadership. The Dare is open.",
+    body: "DYD #001 — The Testimonial Hunt. Trip for 2 to Bahamas + dinner with leadership. The Dare is open.",
     cta: "View Challenge",
     href: "/",
     unread: true,

@@ -1,0 +1,8 @@
+/* BairesDev DS3 design tokens — DO NOT EDIT in this app.
+   Source of truth lives in tokens.css. Imports must come first per CSS spec. */
+@import "./tokens.css";
+@import "./components.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

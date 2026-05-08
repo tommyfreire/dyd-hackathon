@@ -140,12 +140,19 @@ export interface AuditResult {
   validatedItems: number;
   rejectedItems: number;
   qualityScore: number;        // 0–100
-  qualityMultiplier: number;   // ~0.4–1.2
+  /** Legacy multiplier from the v1 scoring band. Kept optional for back-compat. */
+  qualityMultiplier?: number;
+  /** Snapshot of the formula score at audit time (admin formula recomputes live). */
   suggestedFinalScore: number;
+  /** Admin-entered override on the 0–10 final scale. Takes precedence over the formula. */
+  overrideScore?: number;
   flags: string[];
   recommendation: string;
   adminStatus: AdminStatus;
-  rubricBreakdown?: { key: string; score: number; note?: string }[];
+  /** Per-criterion scores. Populated when produced by the AI Audit Assistant. */
+  rubricBreakdown?: { key: string; label?: string; score: number; max?: number; note?: string }[];
+  /** Step-by-step explanation of how the suggested final score was derived. */
+  trace?: string[];
 }
 
 export interface FeedComment {
@@ -166,6 +173,8 @@ export interface FeedPost {
   reactions: Record<ReactionKind, number>;
   comments?: FeedComment[];
   pinned?: boolean;
+  /** Optional inline call-to-action rendered below the post body. */
+  cta?: { label: string; href: string };
 }
 
 export interface AgentSnapshot {
@@ -193,7 +202,6 @@ export interface GrowthAssetBundle {
   caseStudies: { title: string; summary: string; client: string }[];
   snippets: { tag: string; text: string }[];
   linkedinPosts: { title: string; body: string }[];
-  campaignAngles: string[];
 }
 
 export interface FeedPage {
