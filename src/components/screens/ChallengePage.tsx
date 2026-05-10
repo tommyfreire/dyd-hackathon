@@ -9,7 +9,7 @@ import { Disclaimer } from "@/components/shell/PageHead";
 import { useRole } from "@/lib/role-context";
 import { useStage } from "@/lib/stage-context";
 import { fmtDate } from "@/lib/format";
-import { getChallenge, getParticipants, register } from "@/lib/api";
+import { getAdminReviewOpened, getChallenge, getParticipants, register } from "@/lib/api";
 import type { Challenge } from "@/lib/types";
 import { RegisterModal } from "./RegisterModal";
 
@@ -41,7 +41,7 @@ export function ChallengePage() {
   // been declared yet → invite them straight into Admin Review.
   useEffect(() => {
     if (role !== "admin" || stage !== "completed" || !c) return;
-    if (!c.winnerId) setShowFinalReview(true);
+    if (!c.winnerId && !getAdminReviewOpened()) setShowFinalReview(true);
   }, [role, stage, c]);
 
   if (!c || !user) return null;

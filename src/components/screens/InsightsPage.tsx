@@ -9,6 +9,44 @@ import { useStage } from "@/lib/stage-context";
 import { getGrowthAssets, getGrowthInsightSent, sendGrowthInsightSnapshot } from "@/lib/api";
 import type { InsightBundle } from "@/agents/types";
 
+const BUNDLE_KEY = "dyd:insight-bundle:v1";
+
+function loadCachedBundle(): InsightBundle | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(BUNDLE_KEY);
+    return raw ? (JSON.parse(raw) as InsightBundle) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveCachedBundle(bundle: InsightBundle): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(BUNDLE_KEY, JSON.stringify(bundle));
+  } catch {}
+}
+
+// Module-scoped so a navigation away mid-run doesn't lose the in-flight
+// extraction. On return, the page rehydrates from this promise.
+let inFlightExtraction: Promise<InsightBundle> | null = null;
+
+function runExtraction(): Promise<InsightBundle> {
+  if (inFlightExtraction) return inFlightExtraction;
+  inFlightExtraction = (async () => {
+    try {
+      await new Promise((res) => setTimeout(res, 5000));
+      const bundle = await getGrowthAssets("dyd-001");
+      saveCachedBundle(bundle);
+      return bundle;
+    } finally {
+      inFlightExtraction = null;
+    }
+  })();
+  return inFlightExtraction;
+}
+
 export function InsightsPage() {
   const { role } = useRole();
   const { stage } = useStage();
@@ -20,10 +58,12 @@ export function InsightsPage() {
 
   const trigger = async () => {
     setRunning(true);
-    // Artificial 5-second handoff so the agent feels like it's working.
-    await new Promise((res) => setTimeout(res, 5000));
     try {
-      setData(await getGrowthAssets("dyd-001"));
+      const bundle = await runExtraction();
+      setData(bundle);
+      // A re-run produces a new bundle; the Send-to-Daremaster affordance
+      // should re-appear so the admin can ship this one.
+      setSentToHype(false);
     } finally {
       setRunning(false);
     }
@@ -40,18 +80,36 @@ export function InsightsPage() {
     }
   };
 
-  // Track whether the bundle already went to the Daremaster (e.g. on revisit).
+  // On mount: if an extraction is in-flight, attach to it; else hydrate from
+  // the localStorage cache; else stay on the empty landing.
   useEffect(() => {
-    getGrowthInsightSent().then(setSentToHype);
+    if (inFlightExtraction) {
+      setRunning(true);
+      inFlightExtraction
+        .then((bundle) => {
+          setData(bundle);
+          setSentToHype(false);
+        })
+        .finally(() => setRunning(false));
+      return;
+    }
+    const cached = loadCachedBundle();
+    if (cached) {
+      setData(cached);
+      getGrowthInsightSent().then(setSentToHype);
+    }
   }, []);
 
   // Participants land directly on the report once the challenge has ended —
   // they reach this page via the winner-announcement link in the feed.
   useEffect(() => {
-    if (stage === "completed" && role === "participant" && !data) {
-      getGrowthAssets("dyd-001").then(setData);
+    if (stage === "completed" && role === "participant" && !data && !running) {
+      getGrowthAssets("dyd-001").then((bundle) => {
+        setData(bundle);
+        saveCachedBundle(bundle);
+      });
     }
-  }, [stage, role, data]);
+  }, [stage, role, data, running]);
 
   // The extractor only runs once the challenge has finished.
   if (stage !== "completed") {

@@ -79,6 +79,7 @@ export async function POST(req: Request): Promise<Response> {
   try {
     const post = await withCache<DaremasterPost>(cacheKey, TTL_MS, async () => {
       const raw = await callAnthropic({
+        agent: "daremaster",
         system: SYSTEM_PROMPT,
         user: userPromptFor(body),
         maxTokens: 400,

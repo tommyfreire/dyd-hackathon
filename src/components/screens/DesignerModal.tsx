@@ -14,6 +14,7 @@ export function DesignerModal({ open, onClose }: { open: boolean; onClose: () =>
   const [brief, setBrief] = useState<ChallengeBrief | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
+  const [published, setPublished] = useState(false);
   const t = useToast();
 
   const generate = async () => {
@@ -35,6 +36,29 @@ export function DesignerModal({ open, onClose }: { open: boolean; onClose: () =>
     setBrief(null);
     setIdea("");
     setErr("");
+    setPublished(false);
+  };
+
+  const closeAndReset = () => {
+    onClose();
+    setTimeout(reset, 200);
+  };
+
+  const downloadBrief = () => {
+    if (!brief) return;
+    const slug =
+      brief.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "dyd-brief";
+    const json = JSON.stringify(brief, null, 2);
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${slug}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    t.push("Brief saved to your Downloads folder.", "success");
   };
 
   const update = <K extends keyof ChallengeBrief>(key: K, value: ChallengeBrief[K]) => {
@@ -42,7 +66,7 @@ export function DesignerModal({ open, onClose }: { open: boolean; onClose: () =>
   };
 
   return (
-    <Modal open={open} onClose={onClose} width={820}>
+    <Modal open={open} onClose={closeAndReset} width={820}>
       <div className="modal-header">
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <Avatar bot size="md" />
@@ -55,6 +79,35 @@ export function DesignerModal({ open, onClose }: { open: boolean; onClose: () =>
         </div>
       </div>
       <div className="modal-body">
+        {brief && published && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div className="brief-banner">
+              <Icon name="sparkles" size={14} />
+              <span>
+                <strong>Brief drafted.</strong> Publishing the full Dare into the live platform is a TODO — here is what would still need to happen.
+              </span>
+            </div>
+            <div className="card-flat">
+              <div className="eyebrow-mini">What publishing would do</div>
+              <ul style={{ marginTop: 12, paddingLeft: 20, lineHeight: 1.7, color: "var(--fg-2)", fontSize: 14 }}>
+                <li>Insert a new <code>Challenge</code> row and scaffold its evidence, audit, and participant tables.</li>
+                <li>Switch the active challenge across every screen (today every page hardcodes <code>dyd-001</code>).</li>
+                <li>Trigger the Daremaster's launch-video generation tool for this challenge.</li>
+                <li>Run the launch broadcast on the feed + send the company-wide notification.</li>
+                <li>Open registration and start the timers.</li>
+              </ul>
+              <div style={{ fontSize: 12, color: "var(--fg-4)", marginTop: 12 }}>
+                Full breakdown lives in <code>ROADMAP.md</code> under the Challenge Designer entry.
+              </div>
+            </div>
+            <div className="card-flat">
+              <div className="eyebrow-mini">Don't lose this idea</div>
+              <div style={{ fontSize: 13, color: "var(--fg-2)", marginTop: 8, lineHeight: 1.6 }}>
+                Download the brief as JSON so you can pick it back up — or re-import it once the publish pipeline ships.
+              </div>
+            </div>
+          </div>
+        )}
         {!brief && !loading && (
           <>
             <div className="label">Your one-line idea</div>
@@ -90,7 +143,7 @@ export function DesignerModal({ open, onClose }: { open: boolean; onClose: () =>
             </div>
           </div>
         )}
-        {brief && !loading && (
+        {brief && !loading && !published && (
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <div className="brief-banner">
               <Icon name="sparkles" size={14} />
@@ -206,7 +259,7 @@ export function DesignerModal({ open, onClose }: { open: boolean; onClose: () =>
       <div className="modal-footer">
         {!brief && !loading && (
           <>
-            <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+            <button className="btn btn-ghost" onClick={closeAndReset}>Cancel</button>
             <button
               className="btn btn-primary"
               disabled={!idea.trim()}
@@ -216,18 +269,24 @@ export function DesignerModal({ open, onClose }: { open: boolean; onClose: () =>
             </button>
           </>
         )}
-        {brief && !loading && (
+        {brief && !loading && !published && (
           <>
             <button className="btn btn-ghost" onClick={reset}>Start over</button>
-            <button
-              className="btn btn-primary"
-              onClick={() => {
-                t.push(`Brief published: ${brief.title}`, "success");
-                onClose();
-                reset();
-              }}
-            >
+            <button className="btn btn-primary" onClick={() => setPublished(true)}>
               Publish as DYD #002
+            </button>
+          </>
+        )}
+        {brief && published && (
+          <>
+            <button className="btn btn-ghost" onClick={() => setPublished(false)}>
+              Back to editing
+            </button>
+            <button className="btn btn-ghost" onClick={downloadBrief}>
+              <Icon name="archive" size={14} /> Download brief
+            </button>
+            <button className="btn btn-primary" onClick={closeAndReset}>
+              Close
             </button>
           </>
         )}

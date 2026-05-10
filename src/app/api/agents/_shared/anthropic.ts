@@ -5,6 +5,9 @@
 // crash. Other errors (network, non-2xx, malformed body) are also recoverable
 // and bubble up as `ProviderError`.
 
+import { recordCall } from "./costLog";
+import { costFor } from "./pricing";
+
 const ENDPOINT = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_VERSION = "2023-06-01";
 const DEFAULT_MODEL = "claude-haiku-4-5";
@@ -26,6 +29,7 @@ export class ProviderError extends Error {
 }
 
 export interface CallOptions {
+  agent: string;
   system: string;
   user: string;
   /** Hard upper bound on output tokens. Keep small — these prompts are tight. */
@@ -37,6 +41,44 @@ export interface CallOptions {
 interface AnthropicResponse {
   content?: { type: string; text?: string }[];
   error?: { message?: string };
+  usage?: {
+    input_tokens?: number;
+    output_tokens?: number;
+  };
+}
+
+export interface RawProviderOutput {
+  agent: string;
+  model: string;
+  text: string;
+}
+
+const rawOutputs: RawProviderOutput[] = [];
+
+export function getRawProviderOutputs(): readonly RawProviderOutput[] {
+  return rawOutputs;
+}
+
+export function resetRawProviderOutputs(): void {
+  rawOutputs.length = 0;
+}
+
+function usageTokens(parsed: AnthropicResponse): { inputTokens: number; outputTokens: number } {
+  return {
+    inputTokens: Math.max(0, Math.round(parsed.usage?.input_tokens ?? 0)),
+    outputTokens: Math.max(0, Math.round(parsed.usage?.output_tokens ?? 0)),
+  };
+}
+
+function recordUsage(agent: string, model: string, parsed: AnthropicResponse): void {
+  const { inputTokens, outputTokens } = usageTokens(parsed);
+  recordCall({
+    agent,
+    model,
+    inputTokens,
+    outputTokens,
+    cost: costFor(model, inputTokens, outputTokens),
+  });
 }
 
 /**
@@ -74,6 +116,10 @@ export async function callAnthropic(opts: CallOptions): Promise<string> {
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
+    try {
+      const parsed = JSON.parse(text) as AnthropicResponse;
+      if (parsed.usage) recordUsage(opts.agent, model, parsed);
+    } catch {}
     throw new ProviderError(
       `Anthropic ${res.status}: ${text.slice(0, 200)}`,
       res.status
@@ -88,6 +134,7 @@ export async function callAnthropic(opts: CallOptions): Promise<string> {
   }
 
   if (parsed.error) {
+    if (parsed.usage) recordUsage(opts.agent, model, parsed);
     throw new ProviderError(parsed.error.message ?? "provider error");
   }
 
@@ -98,5 +145,7 @@ export async function callAnthropic(opts: CallOptions): Promise<string> {
     .trim();
 
   if (!text) throw new ProviderError("empty response");
+  recordUsage(opts.agent, model, parsed);
+  rawOutputs.push({ agent: opts.agent, model, text });
   return text;
 }

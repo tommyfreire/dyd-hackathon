@@ -3,17 +3,24 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/ui/Icon";
-import { getNotifications } from "@/lib/api";
+import { getAdminReviewOpened, getNotifications } from "@/lib/api";
 import type { Notification } from "@/lib/types";
 
 export function NotificationBell() {
   const [open, setOpen] = useState(false);
   const [notifs, setNotifs] = useState<Notification[]>([]);
+  const [adminReviewOpened, setAdminReviewOpened] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
   useEffect(() => {
-    getNotifications().then(setNotifs);
+    const refresh = () => {
+      getNotifications().then(setNotifs);
+      setAdminReviewOpened(getAdminReviewOpened());
+    };
+    refresh();
+    window.addEventListener("dyd:state-changed", refresh);
+    return () => window.removeEventListener("dyd:state-changed", refresh);
   }, []);
 
   useEffect(() => {
@@ -24,7 +31,10 @@ export function NotificationBell() {
     return () => document.removeEventListener("mousedown", onClick);
   }, []);
 
-  const unread = notifs.filter((n) => n.unread).length;
+  const visibleNotifs = adminReviewOpened
+    ? notifs.filter((n) => n.id !== "n-audit-ready")
+    : notifs;
+  const unread = visibleNotifs.filter((n) => n.unread).length;
 
   return (
     <div ref={ref} style={{ position: "relative" }}>
@@ -50,7 +60,7 @@ export function NotificationBell() {
           >
             Notifications
           </div>
-          {notifs.map((n) => (
+          {visibleNotifs.map((n) => (
             <div
               key={n.id}
               className={`notif-item ${n.unread ? "unread" : ""}`}

@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:live": "tsx scripts/test-live-agents.ts",
     "db:setup": "node scripts/db-setup.mjs",
     "db:reset": "docker compose down -v && npm run db:setup",
     "db:studio": "prisma studio",

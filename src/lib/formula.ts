@@ -65,6 +65,37 @@ export function saveFormula(c: ScoringFormulaConfig): void {
   } catch {}
 }
 
+const SENT_KEY = "dyd:formula-last-sent:v1";
+
+export function loadLastSentFormula(): ScoringFormulaConfig | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(SENT_KEY);
+    return raw ? (JSON.parse(raw) as ScoringFormulaConfig) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveLastSentFormula(c: ScoringFormulaConfig): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(SENT_KEY, JSON.stringify(c));
+  } catch {}
+}
+
+export function formulasEqual(a: ScoringFormulaConfig, b: ScoringFormulaConfig): boolean {
+  if (a.qualityWeight !== b.qualityWeight) return false;
+  if (a.targetItems !== b.targetItems) return false;
+  const aw = a.rubricWeights ?? {};
+  const bw = b.rubricWeights ?? {};
+  const ak = Object.keys(aw);
+  const bk = Object.keys(bw);
+  if (ak.length !== bk.length) return false;
+  for (const k of ak) if (aw[k] !== bw[k]) return false;
+  return true;
+}
+
 type Signals = Pick<AuditResult, "qualityScore" | "validatedItems" | "rubricBreakdown">;
 
 /**

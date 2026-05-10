@@ -24,29 +24,14 @@ import {
   totalCost,
   type CallRecord,
 } from "@/app/api/agents/_shared/costLog";
+import {
+  getRawProviderOutputs,
+  resetRawProviderOutputs,
+} from "@/app/api/agents/_shared/anthropic";
+import { loadEnvConfig } from "@next/env";
 import { formatUsd } from "@/app/api/agents/_shared/pricing";
 
-// ────────────────────────────────────────────────────────────────────────────
-// IMPLEMENTER TODO BLOCK — fill these imports in once the wiring is ready.
-//
-// Comment them out at the top so the skeleton type-checks even with TODOs
-// open. Restore them as you wire each agent.
-// ────────────────────────────────────────────────────────────────────────────
-//
-// import { seedAll } from "@/server/seed";
-// import {
-//   buildDaremasterSnapshot,
-//   buildDaremasterSnapshotWithAudit,
-//   getInsightInput,
-//   getAuditTraceInput,
-//   sendDaremasterSnapshot,
-//   sendGrowthInsightSnapshot,
-// } from "@/server/actions/agents";
-// import { adminDeclareWinner } from "@/server/actions/challenge";
-// import { POST as daremasterRoute } from "@/app/api/agents/daremaster/route";
-// import { POST as insightExtractorRoute } from "@/app/api/agents/insight-extractor/route";
-// import { POST as challengeDesignerRoute } from "@/app/api/agents/challenge-designer/route";
-// import { POST as auditTraceRoute } from "@/app/api/agents/audit-assistant/trace/route";
+loadEnvConfig(process.cwd());
 
 // ────────────────────────────────────────────────────────────────────────────
 // CLI
@@ -101,71 +86,139 @@ interface AgentRunner {
   run: () => Promise<RunResult[]>;
 }
 
-const RUNNERS: AgentRunner[] = [
-  // ──────────────────────────────────────────────────────────────────────
-  // IMPLEMENTER TODO — wire each runner.
-  // Each runner: seed the appropriate stage, build inputs via server
-  // actions, call POST(req), return one RunResult per call (e.g.
-  // daremaster:insight + daremaster:winner are two results).
-  // The seed call must precede the input build so the DB has fresh state.
-  // ──────────────────────────────────────────────────────────────────────
+async function loadDeps() {
+  const [
+    seed,
+    agentActions,
+    challengeActions,
+    daremaster,
+    insightExtractor,
+    challengeDesigner,
+    auditTrace,
+  ] = await Promise.all([
+    import("@/server/seed"),
+    import("@/server/actions/agents"),
+    import("@/server/actions/challenge"),
+    import("@/app/api/agents/daremaster/route"),
+    import("@/app/api/agents/insight-extractor/route"),
+    import("@/app/api/agents/challenge-designer/route"),
+    import("@/app/api/agents/audit-assistant/trace/route"),
+  ]);
+  return {
+    seedAll: seed.seedAll,
+    buildDaremasterSnapshotWithAudit: agentActions.buildDaremasterSnapshotWithAudit,
+    getInsightInput: agentActions.getInsightInput,
+    getAuditTraceInput: agentActions.getAuditTraceInput,
+    sendDaremasterSnapshot: agentActions.sendDaremasterSnapshot,
+    adminDeclareWinner: challengeActions.adminDeclareWinner,
+    daremasterRoute: daremaster.POST,
+    insightExtractorRoute: insightExtractor.POST,
+    challengeDesignerRoute: challengeDesigner.POST,
+    auditTraceRoute: auditTrace.POST,
+  };
+}
 
+async function callRoute(
+  agent: string,
+  route: (req: Request) => Promise<Response>,
+  body: unknown,
+  path: string
+): Promise<RunResult> {
+  const rawBefore = getRawProviderOutputs().length;
+  const res = await route(jsonRequest(body, path));
+  const result = await toResult(agent, res);
+  if (!res.ok) {
+    const raw = getRawProviderOutputs().slice(rawBefore).at(-1);
+    if (raw?.text) result.rawOutputSnippet = raw.text.slice(0, 200);
+  }
+  return result;
+}
+
+const RUNNERS: AgentRunner[] = [
   {
     name: "daremaster",
     run: async () => {
-      // TODO:
-      //   1. await seedAll("day_14", "admin");
-      //   2. await sendDaremasterSnapshot();
-      //   3. const snapshot = await buildDaremasterSnapshotWithAudit();
-      //   4. const insightRes = await daremasterRoute(jsonRequest({ snapshot, mode: "insight" }));
-      //   5. await seedAll("completed", "admin");
-      //   6. await adminDeclareWinner("p-patrick");
-      //   7. const winnerSnap = await buildDaremasterSnapshotWithAudit();
-      //   8. const winnerRes = await daremasterRoute(jsonRequest({ snapshot: winnerSnap, mode: "winner" }));
-      //   9. return [
-      //        await toResult("daremaster:insight", insightRes),
-      //        await toResult("daremaster:winner", winnerRes),
-      //      ];
-      return notWiredYet("daremaster");
+      const deps = await loadDeps();
+      await deps.seedAll("day_14", "admin");
+      await deps.sendDaremasterSnapshot();
+      const insightSnapshot = await deps.buildDaremasterSnapshotWithAudit();
+      const insight = await callRoute(
+        "daremaster:insight",
+        deps.daremasterRoute,
+        { snapshot: insightSnapshot, mode: "insight" },
+        "/api/agents/daremaster"
+      );
+
+      await deps.seedAll("completed", "admin");
+      await deps.adminDeclareWinner("p-patrick");
+      const winnerSnapshot = await deps.buildDaremasterSnapshotWithAudit();
+      const winner = await callRoute(
+        "daremaster:winner",
+        deps.daremasterRoute,
+        { snapshot: winnerSnapshot, mode: "winner" },
+        "/api/agents/daremaster"
+      );
+
+      return [insight, winner];
     },
   },
   {
     name: "insight-extractor",
     run: async () => {
-      // TODO:
-      //   1. await seedAll("completed", "admin");
-      //   2. await adminDeclareWinner("p-patrick");
-      //   3. const input = await getInsightInput();
-      //   4. const res = await insightExtractorRoute(jsonRequest(input));
-      //   5. return [await toResult("insight-extractor", res)];
-      return notWiredYet("insight-extractor");
+      const deps = await loadDeps();
+      await deps.seedAll("completed", "admin");
+      await deps.adminDeclareWinner("p-patrick");
+      const input = await deps.getInsightInput();
+      return [
+        await callRoute(
+          "insight-extractor",
+          deps.insightExtractorRoute,
+          input,
+          "/api/agents/insight-extractor"
+        ),
+      ];
     },
   },
   {
     name: "challenge-designer",
     run: async () => {
-      // TODO:
-      //   1. const res = await challengeDesignerRoute(jsonRequest({
-      //        prompt: "A LinkedIn post about a deal we just closed",
-      //      }));
-      //   2. return [await toResult("challenge-designer", res)];
-      return notWiredYet("challenge-designer");
+      const deps = await loadDeps();
+      return [
+        await callRoute(
+          "challenge-designer",
+          deps.challengeDesignerRoute,
+          { prompt: "A LinkedIn post about a deal we just closed" },
+          "/api/agents/challenge-designer"
+        ),
+      ];
     },
   },
   {
     name: "audit-trace",
     run: async () => {
-      // TODO:
-      //   1. await seedAll("completed", "admin");
-      //   2. const participants = ["p-patrick", "p-bob", "p-charlie", "p-alice"];
-      //   3. const results: RunResult[] = [];
-      //   4. for (const id of participants) {
-      //        const input = await getAuditTraceInput(id);
-      //        const res = await auditTraceRoute(jsonRequest(input));
-      //        results.push(await toResult(`audit-trace:${id.replace(/^p-/, "")}`, res));
-      //      }
-      //   5. return results;
-      return notWiredYet("audit-trace");
+      const deps = await loadDeps();
+      await deps.seedAll("completed", "admin");
+      const results: RunResult[] = [];
+      for (const participantId of ["p-patrick", "p-bob", "p-alice", "p-charlie"]) {
+        const input = await deps.getAuditTraceInput(participantId);
+        if (!input) {
+          results.push({
+            agent: `audit-trace:${participantId.replace(/^p-/, "")}`,
+            status: 0,
+            error: "missing audit trace input",
+          });
+          continue;
+        }
+        results.push(
+          await callRoute(
+            `audit-trace:${participantId.replace(/^p-/, "")}`,
+            deps.auditTraceRoute,
+            input,
+            "/api/agents/audit-assistant/trace"
+          )
+        );
+      }
+      return results;
     },
   },
 ];
@@ -195,11 +248,6 @@ export async function toResult(agent: string, res: Response): Promise<RunResult>
   };
 }
 
-/** Placeholder for unwired runners — keeps the dry-run output coherent. */
-function notWiredYet(name: string): RunResult[] {
-  return [{ agent: `${name}:unwired`, status: 0, error: "runner not wired yet — see TODO in scripts/test-live-agents.ts" }];
-}
-
 // ────────────────────────────────────────────────────────────────────────────
 // Report
 // ────────────────────────────────────────────────────────────────────────────
@@ -216,8 +264,23 @@ function fmtNumber(n: number): string {
   return n.toLocaleString("en-US");
 }
 
-function findRecord(log: readonly CallRecord[], agent: string): CallRecord | undefined {
-  return log.find((entry) => entry.agent === agent);
+function baseAgent(agent: string): string {
+  return agent.startsWith("audit-trace:") ? "audit-trace" : agent.split(":")[0];
+}
+
+function pairRecords(runResults: RunResult[], log: readonly CallRecord[]): Array<CallRecord | undefined> {
+  const byAgent = new Map<string, CallRecord[]>();
+  for (const entry of log) {
+    const list = byAgent.get(entry.agent) ?? [];
+    list.push(entry);
+    byAgent.set(entry.agent, list);
+  }
+  return runResults.map((result) => {
+    const exact = byAgent.get(result.agent);
+    if (exact?.length) return exact.shift();
+    const base = byAgent.get(baseAgent(result.agent));
+    return base?.shift();
+  });
 }
 
 function printTextReport(runResults: RunResult[], log: readonly CallRecord[]): void {
@@ -236,8 +299,9 @@ function printTextReport(runResults: RunResult[], log: readonly CallRecord[]): v
   console.log("─".repeat(86));
 
   let cumulative = 0;
-  for (const r of runResults) {
-    const rec = findRecord(log, r.agent);
+  const records = pairRecords(runResults, log);
+  for (const [idx, r] of runResults.entries()) {
+    const rec = records[idx];
     const inTok = rec ? fmtNumber(rec.inputTokens) : "—";
     const outTok = rec ? fmtNumber(rec.outputTokens) : "—";
     const cost = rec ? rec.cost : 0;
@@ -267,10 +331,11 @@ function printTextReport(runResults: RunResult[], log: readonly CallRecord[]): v
 }
 
 function printJsonReport(runResults: RunResult[], log: readonly CallRecord[]): void {
+  const records = pairRecords(runResults, log);
   const payload = {
     timestamp: new Date().toISOString(),
-    runs: runResults.map((r) => {
-      const rec = findRecord(log, r.agent);
+    runs: runResults.map((r, idx) => {
+      const rec = records[idx];
       return {
         ...r,
         ...(rec ? {
@@ -297,6 +362,7 @@ async function main(): Promise<number> {
   const args = parseArgs(process.argv.slice(2));
 
   resetSessionLog();
+  resetRawProviderOutputs();
 
   const runners = args.only
     ? RUNNERS.filter((r) => r.name === args.only)
@@ -327,7 +393,14 @@ async function main(): Promise<number> {
     printTextReport(allResults, getSessionLog());
   }
 
-  // Exit code: non-zero if any runner failed (status not 2xx).
+  // Dry run: with no key, every route should return the explicit missing-key
+  // status and cost must stay at zero. That is a successful pre-flight.
+  if (!process.env.ANTHROPIC_API_KEY) {
+    const allMissingKey = allResults.every((r) => r.status === 503);
+    return allMissingKey && totalCalls() === 0 ? 0 : 1;
+  }
+
+  // Live run: non-zero if any runner failed (status not 2xx).
   const allOk = allResults.every((r) => r.status >= 200 && r.status < 300);
   return allOk ? 0 : 1;
 }

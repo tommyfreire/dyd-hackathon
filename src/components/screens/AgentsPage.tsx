@@ -7,7 +7,7 @@
 // admins. The Growth Insight Extractor only appears once the challenge has
 // finished.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/ui/Icon";
 import { Avatar } from "@/components/ui/Avatar";
@@ -18,6 +18,7 @@ import { useStage } from "@/lib/stage-context";
 import {
   generateDaremasterPost,
   getAgents,
+  getChallenge,
   getGrowthInsightSent,
   getDaremasterInsightSent,
   postDaremasterMessage,
@@ -41,6 +42,7 @@ export function AgentsPage() {
   const [agents, setAgents] = useState<AgentSnapshot[]>([]);
   const [openDesigner, setOpenDesigner] = useState(false);
   const [growthSent, setGrowthSent] = useState(false);
+  const [winnerDeclared, setWinnerDeclared] = useState(false);
 
   useEffect(() => {
     getAgents().then(setAgents);
@@ -51,8 +53,13 @@ export function AgentsPage() {
   useEffect(() => {
     let cancelled = false;
     const tick = async () => {
-      const v = await getGrowthInsightSent();
-      if (!cancelled) setGrowthSent(v);
+      const [sent, challenge] = await Promise.all([
+        getGrowthInsightSent(),
+        getChallenge("dyd-001"),
+      ]);
+      if (cancelled) return;
+      setGrowthSent(sent);
+      setWinnerDeclared(!!challenge.winnerId);
     };
     tick();
     const refresh = () => tick();
@@ -93,7 +100,7 @@ export function AgentsPage() {
         )}
         {byId("daremaster") && <DaremasterCard snapshot={byId("daremaster")!} />}
         {byId("audit_assistant") && <AuditAgentCard snapshot={byId("audit_assistant")!} />}
-        {stage === "completed" && byId("insight_extractor") && (
+        {stage === "completed" && winnerDeclared && byId("insight_extractor") && (
           <InsightExtractorCard snapshot={byId("insight_extractor")!} growthSent={growthSent} />
         )}
       </div>
@@ -178,40 +185,16 @@ function DaremasterCard({ snapshot }: { snapshot: AgentSnapshot }) {
   const [pinning, setPinning] = useState(false);
   const [trivialIdx, setTrivialIdx] = useState(0);
   const [generating, setGenerating] = useState(false);
-  // Day 14: Audit-Agent insight handoff state.
   const [insightSent, setInsightSent] = useState(false);
-  const [insightReady, setInsightReady] = useState(false);
-  const [auditWorking, setAuditWorking] = useState(false);
-  // Completed: dual handoff state (audit 5s, growth 2s).
   const [growthSent, setGrowthSent] = useState(false);
-  const [auditFinalReady, setAuditFinalReady] = useState(false);
-  const [growthReady, setGrowthReady] = useState(false);
-  const [auditFinalLoading, setAuditFinalLoading] = useState(false);
-  const [growthLoading, setGrowthLoading] = useState(false);
-  const auditTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const auditFinalTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const growthTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isCompleted = stage === "completed";
-  const bothFinalReady = auditFinalReady && growthReady;
 
-  // Poll the audit snapshot flag (Day-14 handoff).
   useEffect(() => {
     if (isCompleted) return;
     let cancelled = false;
     const tick = async () => {
       const sent = await getDaremasterInsightSent();
-      if (cancelled) return;
-      setInsightSent((prev) => {
-        if (sent && !prev && !insightReady) {
-          setAuditWorking(true);
-          if (auditTimer.current) clearTimeout(auditTimer.current);
-          auditTimer.current = setTimeout(() => {
-            setAuditWorking(false);
-            setInsightReady(true);
-          }, 4000);
-        }
-        return sent;
-      });
+      if (!cancelled) setInsightSent(sent);
     };
     tick();
     const refresh = () => tick();
@@ -219,35 +202,15 @@ function DaremasterCard({ snapshot }: { snapshot: AgentSnapshot }) {
     return () => {
       cancelled = true;
       window.removeEventListener("dyd:state-changed", refresh);
-      if (auditTimer.current) clearTimeout(auditTimer.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isCompleted]);
 
-  // Completed: when growth flag flips true, kick BOTH loaders (audit 5s, growth 2s).
   useEffect(() => {
     if (!isCompleted) return;
     let cancelled = false;
     const tick = async () => {
       const v = await getGrowthInsightSent();
-      if (cancelled) return;
-      setGrowthSent((prev) => {
-        if (v && !prev && !bothFinalReady) {
-          setAuditFinalLoading(true);
-          setGrowthLoading(true);
-          if (auditFinalTimer.current) clearTimeout(auditFinalTimer.current);
-          if (growthTimer.current) clearTimeout(growthTimer.current);
-          auditFinalTimer.current = setTimeout(() => {
-            setAuditFinalLoading(false);
-            setAuditFinalReady(true);
-          }, 5000);
-          growthTimer.current = setTimeout(() => {
-            setGrowthLoading(false);
-            setGrowthReady(true);
-          }, 2000);
-        }
-        return v;
-      });
+      if (!cancelled) setGrowthSent(v);
     };
     tick();
     const refresh = () => tick();
@@ -255,24 +218,25 @@ function DaremasterCard({ snapshot }: { snapshot: AgentSnapshot }) {
     return () => {
       cancelled = true;
       window.removeEventListener("dyd:state-changed", refresh);
-      if (auditFinalTimer.current) clearTimeout(auditFinalTimer.current);
-      if (growthTimer.current) clearTimeout(growthTimer.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isCompleted]);
 
-  const generate = async () => {
+  const generate = async (fresh = false) => {
+    const alreadySawOutput = !!(draft || posted);
     setGenerating(true);
     setPosted(null);
     try {
       let mode: DaremasterMode;
-      if (isCompleted && bothFinalReady) mode = "winner";
-      else if (!isCompleted && insightReady) mode = "insight";
+      if (isCompleted && growthSent) mode = "winner";
+      else if (!isCompleted && insightSent) mode = "insight";
       else {
         mode = "trivial";
         setTrivialIdx((i) => i + 1);
       }
-      const post = await generateDaremasterPost(mode, { trivialIdx });
+      const post = await generateDaremasterPost(mode, {
+        trivialIdx,
+        fresh: fresh || alreadySawOutput,
+      });
       setDraft(post);
     } finally {
       setGenerating(false);
@@ -294,7 +258,7 @@ function DaremasterCard({ snapshot }: { snapshot: AgentSnapshot }) {
   };
 
   const regenerate = () => {
-    generate();
+    generate(true);
   };
 
   const pin = async () => {
@@ -309,7 +273,7 @@ function DaremasterCard({ snapshot }: { snapshot: AgentSnapshot }) {
     }
   };
 
-  const blocked = generating || auditWorking || auditFinalLoading || growthLoading;
+  const blocked = generating;
 
   return (
     <AgentCardFrame snapshot={snapshot}>
@@ -318,7 +282,7 @@ function DaremasterCard({ snapshot }: { snapshot: AgentSnapshot }) {
           <button
             className="btn btn-primary btn-sm"
             disabled={blocked}
-            onClick={generate}
+            onClick={() => generate()}
           >
             <Icon name="sparkles" size={14} />{" "}
             {generating ? "Generating…" : draft ? "Re-generate" : "Generate next post"}
@@ -327,8 +291,7 @@ function DaremasterCard({ snapshot }: { snapshot: AgentSnapshot }) {
         hint="Reads ranking + deadline state and drafts a contextual broadcast. You review before posting."
       />
 
-      {/* Day-14 audit handoff (gated to non-completed stages). */}
-      {!isCompleted && !insightSent && !auditWorking && !insightReady && (
+      {!isCompleted && !insightSent && (
         <div className="agent-note" style={{ marginTop: 12 }}>
           <Icon name="sparkles" size={12} />
           <span>
@@ -338,15 +301,14 @@ function DaremasterCard({ snapshot }: { snapshot: AgentSnapshot }) {
         </div>
       )}
 
-      {!isCompleted && auditWorking && (
-        <div className="audit-working">
-          <div className="spinner" style={{ width: 18, height: 18, borderWidth: 2 }} />
-          <span>Audit Agent working…</span>
+      {!isCompleted && insightSent && !draft && !posted && (
+        <div className="agent-note" style={{ marginTop: 12, borderColor: "rgba(143,213,191,0.30)", background: "rgba(143,213,191,0.06)" }}>
+          <Icon name="check" size={12} />
+          <span>The Daremaster is enriched with the Audit Agent's findings. Generate the next post for a sharper read.</span>
         </div>
       )}
 
-      {/* Completed: dual handoff loaders + readiness pills. */}
-      {isCompleted && !growthSent && !bothFinalReady && (
+      {isCompleted && !growthSent && (
         <div className="agent-note" style={{ marginTop: 12 }}>
           <Icon name="sparkles" size={12} />
           <span>
@@ -354,38 +316,11 @@ function DaremasterCard({ snapshot }: { snapshot: AgentSnapshot }) {
           </span>
         </div>
       )}
-      {isCompleted && (auditFinalLoading || growthLoading || (growthSent && !bothFinalReady)) && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 12 }}>
-          <div className={`audit-working${auditFinalReady ? " is-done" : ""}`}>
-            {auditFinalReady ? (
-              <Icon name="check" size={14} />
-            ) : (
-              <div className="spinner" style={{ width: 18, height: 18, borderWidth: 2 }} />
-            )}
-            <span>{auditFinalReady ? "Audit Agent insight loaded." : "Info arriving from the Audit Agent…"}</span>
-          </div>
-          <div
-            className={`audit-working${growthReady ? " is-done" : ""}`}
-            style={{
-              background: "rgba(143,213,191,0.06)",
-              borderColor: "rgba(143,213,191,0.20)",
-              color: "var(--bd-green-300)",
-            }}
-          >
-            {growthReady ? (
-              <Icon name="check" size={14} />
-            ) : (
-              <div className="spinner" style={{ width: 18, height: 18, borderWidth: 2 }} />
-            )}
-            <span>{growthReady ? "Growth Agent insight loaded." : "Info arriving from the Growth Insight Extractor…"}</span>
-          </div>
-        </div>
-      )}
 
-      {!isCompleted && insightReady && !auditWorking && !draft && !posted && (
+      {isCompleted && growthSent && !draft && !posted && (
         <div className="agent-note" style={{ marginTop: 12, borderColor: "rgba(143,213,191,0.30)", background: "rgba(143,213,191,0.06)" }}>
           <Icon name="check" size={12} />
-          <span>Audit Agent insight loaded. Generate again for a stronger post.</span>
+          <span>The Daremaster is enriched with the Growth Agent's findings. Generate the winner announcement.</span>
         </div>
       )}
 
@@ -403,7 +338,7 @@ function DaremasterCard({ snapshot }: { snapshot: AgentSnapshot }) {
           <button className="btn btn-success btn-sm" onClick={accept}>
             <Icon name="check" size={14} /> Accept suggestion
           </button>
-          <button className="btn btn-ghost btn-sm" disabled={generating || auditWorking} onClick={regenerate}>
+          <button className="btn btn-ghost btn-sm" disabled={generating} onClick={regenerate}>
             <Icon name="reset" size={14} /> Re-generate
           </button>
         </div>

@@ -14,18 +14,24 @@ import {
   adminOverrideScore,
   generateAuditTrace,
   getAuditQueue,
+  getChallenge,
   getDaremasterInsightSent,
+  getGrowthInsightSent,
   getParticipants,
+  markAdminReviewOpened,
   sendDaremasterSnapshot,
 } from "@/lib/api";
 import {
   computeFormulaScore,
   effectiveFinalScore,
   formulaTrace,
+  formulasEqual,
   loadFormula,
+  loadLastSentFormula,
   qualityComponent,
   quantityComponent,
   saveFormula,
+  saveLastSentFormula,
   type ScoringFormulaConfig,
 } from "@/lib/formula";
 import type { AuditResult, Participant } from "@/lib/types";
@@ -48,19 +54,37 @@ export function AdminPage() {
   const [tab, setTab] = useState<"compare" | "queue">("compare");
   const [formula, setFormula] = useState<ScoringFormulaConfig>(() => loadFormula());
   const [openId, setOpenId] = useState<string | null>(null);
-  const [snapshotSent, setSnapshotSent] = useState(false);
+  const [snapshotDbFlag, setSnapshotDbFlag] = useState(false);
+  const [lastSentFormula, setLastSentFormula] = useState<ScoringFormulaConfig | null>(() =>
+    loadLastSentFormula()
+  );
+  const [growthSent, setGrowthSent] = useState(false);
+  const [winnerDeclared, setWinnerDeclared] = useState(false);
   const [showInsightCta, setShowInsightCta] = useState(false);
   const [showRankingModal, setShowRankingModal] = useState(false);
+
+  // A snapshot is "sent" only if the DB recorded a send AND the formula
+  // hasn't been tuned since. Tuning makes the previous send stale; the
+  // button reverts to the active state so the admin can re-send.
+  const snapshotSent =
+    snapshotDbFlag && !!lastSentFormula && formulasEqual(formula, lastSentFormula);
 
   const refresh = useCallback(async () => {
     setAudits(await getAuditQueue("dyd-001"));
     setParts(await getParticipants("dyd-001"));
-    setSnapshotSent(await getDaremasterInsightSent());
+    setSnapshotDbFlag(await getDaremasterInsightSent());
+    setGrowthSent(await getGrowthInsightSent());
+    const challenge = await getChallenge("dyd-001");
+    setWinnerDeclared(!!challenge.winnerId);
   }, []);
 
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    if (role === "admin" && stage === "completed") markAdminReviewOpened();
+  }, [role, stage]);
 
   const updateFormula = (patch: Partial<ScoringFormulaConfig>) => {
     setFormula((f) => {
@@ -93,9 +117,9 @@ export function AdminPage() {
     await adminDeclareWinner(pid);
     t.push(`Winner declared: ${findP(pid)?.name ?? pid}`, "success");
     refresh();
-    // Surface the next call-to-action: the Growth Insight Extractor is
-    // now available — invite Gabo straight to /agents.
-    setShowInsightCta(true);
+    // Skip the "Growth Insight Extractor available" CTA if the admin has
+    // already run the extractor and shipped its bundle to the Daremaster.
+    if (!growthSent) setShowInsightCta(true);
   };
 
   const openParticipant = openId ? findP(openId) : null;
@@ -131,7 +155,9 @@ export function AdminPage() {
 
   const onSendSnapshot = async () => {
     await sendDaremasterSnapshot();
-    setSnapshotSent(true);
+    saveLastSentFormula(formula);
+    setLastSentFormula(formula);
+    setSnapshotDbFlag(true);
     t.push("Snapshot sent. The Daremaster will use it on the next post.", "success");
   };
 
@@ -164,6 +190,21 @@ export function AdminPage() {
           snapshotSent={snapshotSent}
           onSendSnapshot={onSendSnapshot}
         />
+      )}
+
+      {isFinished && growthSent && (
+        <div
+          className="agent-note"
+          style={{
+            marginTop: 12,
+            marginBottom: 12,
+            borderColor: "rgba(143,213,191,0.30)",
+            background: "rgba(143,213,191,0.06)",
+          }}
+        >
+          <Icon name="check" size={12} />
+          <span>The Daremaster is enriched with the Growth Agent's findings.</span>
+        </div>
       )}
 
       {isFinished && (
@@ -221,9 +262,11 @@ export function AdminPage() {
                 under the current formula. Quality decided the board over Hype-only volume.
               </div>
             </div>
-            <button className="btn btn-primary btn-lg" onClick={() => setShowRankingModal(true)}>
-              <Icon name="check" size={16} /> Accept Scores
-            </button>
+            {!winnerDeclared && (
+              <button className="btn btn-primary btn-lg" onClick={() => setShowRankingModal(true)}>
+                <Icon name="check" size={16} /> Accept Scores
+              </button>
+            )}
           </div>
         </>
       )}
@@ -268,11 +311,13 @@ export function AdminPage() {
               );
             })}
           </div>
-          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 20 }}>
-            <button className="btn btn-primary btn-lg" onClick={() => setShowRankingModal(true)}>
-              <Icon name="check" size={16} /> Accept Scores
-            </button>
-          </div>
+          {!winnerDeclared && (
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 20 }}>
+              <button className="btn btn-primary btn-lg" onClick={() => setShowRankingModal(true)}>
+                <Icon name="check" size={16} /> Accept Scores
+              </button>
+            </div>
+          )}
         </>
       )}
 

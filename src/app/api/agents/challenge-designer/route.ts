@@ -76,6 +76,7 @@ export async function POST(req: Request): Promise<Response> {
   try {
     const brief = await withCache<ChallengeBrief>(cacheKey, TTL_MS, async () => {
       const raw = await callAnthropic({
+        agent: "challenge-designer",
         system: SYSTEM_PROMPT,
         user: userPromptFor(input),
         maxTokens: 1800,

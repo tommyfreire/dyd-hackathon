@@ -196,7 +196,30 @@ export function resetState(): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.removeItem("dyd:formula:v1");
+    window.localStorage.removeItem("dyd:formula-last-sent:v1");
+    window.localStorage.removeItem("dyd:insight-bundle:v1");
+    window.localStorage.removeItem("dyd:admin-review-opened:v1");
     window.localStorage.setItem(STAGE_KEY, DEFAULT_STAGE);
+  } catch {}
+}
+
+const ADMIN_REVIEW_OPENED_KEY = "dyd:admin-review-opened:v1";
+
+export function getAdminReviewOpened(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(ADMIN_REVIEW_OPENED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function markAdminReviewOpened(): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (window.localStorage.getItem(ADMIN_REVIEW_OPENED_KEY) === "1") return;
+    window.localStorage.setItem(ADMIN_REVIEW_OPENED_KEY, "1");
+    broadcastStateChanged();
   } catch {}
 }
 
@@ -242,6 +265,8 @@ export type DaremasterMode = "trivial" | "insight" | "winner";
 export interface GenerateDaremasterOptions {
   /** Index into TRIVIAL_VARIANTS for the trivial mode rotation. Ignored otherwise. */
   trivialIdx?: number;
+  /** Bust the server-side response cache so the user gets a fresh variation. */
+  fresh?: boolean;
 }
 
 export async function generateDaremasterPost(
@@ -259,10 +284,13 @@ export async function generateDaremasterPost(
 
   if (typeof window !== "undefined") {
     try {
+      const body: Record<string, unknown> = { snapshot, mode };
+      // Nonce changes the hash key so the route's 60s TTL cache misses.
+      if (opts.fresh) body._nonce = Date.now();
       const res = await fetch("/api/agents/daremaster", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ snapshot, mode }),
+        body: JSON.stringify(body),
       });
       if (res.ok) {
         const live = (await res.json()) as DaremasterPost;

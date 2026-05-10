@@ -71,6 +71,7 @@ export async function POST(req: Request): Promise<Response> {
   try {
     const bundle = await withCache<InsightBundle>(cacheKey, TTL_MS, async () => {
       const raw = await callAnthropic({
+        agent: "insight-extractor",
         system: SYSTEM_PROMPT,
         user: userPromptFor(body),
         maxTokens: 1600,

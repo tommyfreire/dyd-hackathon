@@ -99,6 +99,7 @@ export async function POST(req: Request): Promise<Response> {
   try {
     const trace = await withCache<string[]>(cacheKey, TTL_MS, async () => {
       const raw = await callAnthropic({
+        agent: "audit-trace",
         system: SYSTEM_PROMPT,
         user: userPromptFor(body),
         maxTokens: 600,

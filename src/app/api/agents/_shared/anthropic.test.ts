@@ -54,7 +54,7 @@ describe("callAnthropic", () => {
     globalThis.fetch = fetchSpy as unknown as typeof globalThis.fetch;
 
     await expect(
-      callAnthropic({ system: "s", user: "u" })
+      callAnthropic({ agent: "test", system: "s", user: "u" })
     ).rejects.toBeInstanceOf(MissingKeyError);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -64,6 +64,7 @@ describe("callAnthropic", () => {
     const fetchSpy = mockFetchOnce(anthropicEnvelope("hello world"));
 
     const out = await callAnthropic({
+      agent: "test",
       system: "you are a tester",
       user: "say hello",
       maxTokens: 200,
@@ -95,7 +96,7 @@ describe("callAnthropic", () => {
     process.env.ANTHROPIC_MODEL = "claude-test-override";
     const fetchSpy = mockFetchOnce(anthropicEnvelope("ok"));
 
-    await callAnthropic({ system: "s", user: "u" });
+    await callAnthropic({ agent: "test", system: "s", user: "u" });
 
     const body = JSON.parse((fetchSpy.mock.calls[0] as unknown as [string, RequestInit])[1].body as string);
     expect(body.model).toBe("claude-test-override");
@@ -106,7 +107,7 @@ describe("callAnthropic", () => {
     delete process.env.ANTHROPIC_MODEL;
     const fetchSpy = mockFetchOnce(anthropicEnvelope("ok"));
 
-    await callAnthropic({ system: "s", user: "u" });
+    await callAnthropic({ agent: "test", system: "s", user: "u" });
 
     const body = JSON.parse((fetchSpy.mock.calls[0] as unknown as [string, RequestInit])[1].body as string);
     expect(body.model).toMatch(/^claude-/);
@@ -119,14 +120,14 @@ describe("callAnthropic", () => {
         throw new TypeError("network down");
       }) as unknown as typeof globalThis.fetch;
 
-    await expect(callAnthropic({ system: "s", user: "u" })).rejects.toBeInstanceOf(ProviderError);
+    await expect(callAnthropic({ agent: "test", system: "s", user: "u" })).rejects.toBeInstanceOf(ProviderError);
   });
 
   it("throws ProviderError with status on non-2xx", async () => {
     process.env.ANTHROPIC_API_KEY = "sk-ant-test";
     mockFetchOnce({ error: { message: "rate limit" } }, { status: 429, ok: false });
     try {
-      await callAnthropic({ system: "s", user: "u" });
+      await callAnthropic({ agent: "test", system: "s", user: "u" });
       expect.fail("expected throw");
     } catch (err) {
       expect(err).toBeInstanceOf(ProviderError);
@@ -138,13 +139,13 @@ describe("callAnthropic", () => {
     process.env.ANTHROPIC_API_KEY = "sk-ant-test";
     mockFetchOnce(undefined, { bodyText: "not json at all" });
 
-    await expect(callAnthropic({ system: "s", user: "u" })).rejects.toBeInstanceOf(ProviderError);
+    await expect(callAnthropic({ agent: "test", system: "s", user: "u" })).rejects.toBeInstanceOf(ProviderError);
   });
 
   it("throws ProviderError on empty text content", async () => {
     process.env.ANTHROPIC_API_KEY = "sk-ant-test";
     mockFetchOnce({ content: [] });
 
-    await expect(callAnthropic({ system: "s", user: "u" })).rejects.toBeInstanceOf(ProviderError);
+    await expect(callAnthropic({ agent: "test", system: "s", user: "u" })).rejects.toBeInstanceOf(ProviderError);
   });
 });

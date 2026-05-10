@@ -505,6 +505,7 @@ export async function getNotificationsDb(): Promise<Notification[]> {
       createdAt: "2026-06-29T18:05:00-03:00",
     };
     if (!challenge.winnerId) return [auditReady];
+    if (state.growthInsightSent) return [auditReady];
     return [
       {
         id: "n-insight-available",
