@@ -192,3 +192,248 @@ describe("generateDaremasterPost — winner mode", () => {
     expect(containsForbiddenScoreLanguage(post.content)).toBe(false);
   });
 });
+
+// ────────────────────────────────────────────────────────────────────────────
+// getGrowthAssets
+// ────────────────────────────────────────────────────────────────────────────
+
+describe("getGrowthAssets", () => {
+  it("uses live route when response is ok", async () => {
+    const liveBundle = {
+      challengeId: "dyd-001",
+      totals: {
+        submitted: 7,
+        approved: 6,
+        rejected: 1,
+        quotes: 1,
+        caseStudies: 1,
+        snippets: 1,
+        linkedinPosts: 1,
+      },
+      topQuotes: [
+        { quote: "live-quote-marker", client: "L", company: "L Co" },
+      ],
+      caseStudies: [{ title: "Live", summary: "Live summary", client: "L Co" }],
+      snippets: [{ tag: "sales", text: "Live snippet text" }],
+      linkedinPosts: [{ title: "Live draft", body: "Live body text." }],
+      generatedAt: "2026-05-09T00:00:00.000Z",
+    };
+    const fetchSpy = mockFetch(async (url, init) => {
+      expect(url).toBe("/api/agents/insight-extractor");
+      const body = JSON.parse((init?.body as string) ?? "{}");
+      expect(Array.isArray(body.approvedPackets)).toBe(true);
+      expect(typeof body.rejectedCount).toBe("number");
+      return okJson(liveBundle);
+    });
+    const api = await importApi();
+    api.setDemoStage("completed");
+
+    const out = await api.getGrowthAssets("dyd-001");
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    // Live marker survives intact — proves we did not fall back.
+    expect(out.topQuotes[0].quote).toBe("live-quote-marker");
+    expect(out.generatedAt).toBe("2026-05-09T00:00:00.000Z");
+  });
+
+  it("falls back to deterministic extractor on non-ok route response", async () => {
+    mockFetch(async () => nonOk(502));
+    const api = await importApi();
+    api.setDemoStage("completed");
+
+    const out = await api.getGrowthAssets("dyd-001");
+    expect(out.challengeId).toBe("dyd-001");
+    expect(typeof out.generatedAt).toBe("string");
+    expect(out.totals).toBeDefined();
+    // Deterministic fallback never invents the live marker.
+    expect(out.topQuotes.find((q) => q.quote === "live-quote-marker")).toBeUndefined();
+  });
+
+  it("falls back to deterministic extractor when fetch throws", async () => {
+    mockFetch(async () => {
+      throw new TypeError("network down");
+    });
+    const api = await importApi();
+    api.setDemoStage("completed");
+
+    const out = await api.getGrowthAssets("dyd-001");
+    expect(out.challengeId).toBe("dyd-001");
+    expect(out.totals).toBeDefined();
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// designChallenge
+// ────────────────────────────────────────────────────────────────────────────
+
+describe("designChallenge", () => {
+  it("uses live route when response is ok", async () => {
+    const liveBrief = {
+      title: "DYD #002 — Live Brief Marker",
+      subtitle: "Subtitle from the route.",
+      description: "Description from the route, three sentences. Live marker. Done.",
+      growthObjective: "Live growth objective.",
+      reward: "Trip for 2",
+      rules: ["Rule one.", "Rule two.", "Rule three."],
+      evidenceRequirements: ["Client name.", "Client role.", "Permission to use."],
+      primaryMetric: "Number of testimonials",
+      registrationDays: 5,
+      submissionDays: 21,
+      rubric: [
+        { key: "a", label: "A", weight: 25 },
+        { key: "b", label: "B", weight: 25 },
+        { key: "c", label: "C", weight: 25 },
+        { key: "d", label: "D", weight: 25 },
+      ],
+      hypeRankingDisclaimer: "Live disclaimer.",
+      notificationCopy: "Live notification.",
+      botLaunchScript: "Live launch script.",
+      auditContract: {
+        primaryMetric: { key: "n", label: "n", type: "number", higherIsBetter: true },
+        evidence: { acceptedTypes: ["video"], requiredFields: ["clientName"] },
+        auditMode: "ai_assisted_human_approved",
+        rubric: [
+          { key: "a", label: "A", weight: 25 },
+          { key: "b", label: "B", weight: 25 },
+          { key: "c", label: "C", weight: 25 },
+          { key: "d", label: "D", weight: 25 },
+        ],
+        redFlags: [],
+        finalScoreFormula: "validated_metric * quality_multiplier",
+        finalDecisionOwner: "admins",
+      },
+    };
+    const fetchSpy = mockFetch(async (url, init) => {
+      expect(url).toBe("/api/agents/challenge-designer");
+      const body = JSON.parse((init?.body as string) ?? "{}");
+      expect(body.prompt).toBe("collect testimonials from strategic accounts");
+      return okJson(liveBrief);
+    });
+    const api = await importApi();
+    const brief = await api.designChallenge({ prompt: "collect testimonials from strategic accounts" });
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    expect(brief.title).toBe("DYD #002 — Live Brief Marker");
+  });
+
+  it("falls back to deterministic designer on non-ok route response", async () => {
+    mockFetch(async () => nonOk(502));
+    const api = await importApi();
+    const brief = await api.designChallenge({ prompt: "collect client testimonials" });
+    expect(brief.title).toBeTruthy();
+    expect(Array.isArray(brief.rules)).toBe(true);
+    expect(brief.auditContract).toBeDefined();
+    expect(brief.auditContract.finalDecisionOwner).toBe("admins");
+    // Deterministic fallback never produces the live marker.
+    expect(brief.title).not.toBe("DYD #002 — Live Brief Marker");
+  });
+
+  it("falls back to deterministic designer when fetch throws", async () => {
+    mockFetch(async () => {
+      throw new TypeError("network down");
+    });
+    const api = await importApi();
+    const brief = await api.designChallenge({ prompt: "collect testimonials" });
+    expect(brief.title).toBeTruthy();
+    expect(brief.auditContract).toBeDefined();
+  });
+
+  it("does not call fetch for blank prompt and still returns a deterministic fallback", async () => {
+    const fetchSpy = vi.fn();
+    globalThis.fetch = fetchSpy as unknown as typeof globalThis.fetch;
+    const api = await importApi();
+    const brief = await api.designChallenge({ prompt: "   " });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(brief).toBeDefined();
+    expect(brief.auditContract).toBeDefined();
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// generateAuditTrace
+// ────────────────────────────────────────────────────────────────────────────
+
+describe("generateAuditTrace", () => {
+  it("returns null when window is absent", async () => {
+    // Override the beforeEach window stub with no window.
+    delete (globalThis as { window?: unknown }).window;
+    vi.resetModules();
+    const api = await importApi();
+    const out = await api.generateAuditTrace("p-patrick");
+    expect(out).toBeNull();
+  });
+
+  it("returns null for an unknown participantId", async () => {
+    const fetchSpy = vi.fn();
+    globalThis.fetch = fetchSpy as unknown as typeof globalThis.fetch;
+    const api = await importApi();
+    api.setDemoStage("completed");
+    const out = await api.generateAuditTrace("p-does-not-exist");
+    expect(out).toBeNull();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("returns null when no audit exists for the participant", async () => {
+    const fetchSpy = vi.fn();
+    globalThis.fetch = fetchSpy as unknown as typeof globalThis.fetch;
+    const api = await importApi();
+    // Launch stage builds an empty audits map for all participants.
+    api.setDemoStage("launch");
+    const out = await api.generateAuditTrace("p-patrick");
+    expect(out).toBeNull();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("returns the live trace on a valid route response", async () => {
+    const liveTrace = [
+      "Validated 9 of 9 items against the contract.",
+      "Quality blends to 95; admin formula computes the final.",
+      "Recommendation: Strong candidate for winner.",
+    ];
+    const fetchSpy = mockFetch(async (url, init) => {
+      expect(url).toBe("/api/agents/audit-assistant/trace");
+      const body = JSON.parse((init?.body as string) ?? "{}");
+      expect(body.packet).toBeDefined();
+      expect(body.contract).toBeDefined();
+      expect(body.findings).toBeDefined();
+      return okJson({ trace: liveTrace });
+    });
+    const api = await importApi();
+    api.setDemoStage("completed");
+    const out = await api.generateAuditTrace("p-patrick");
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    expect(out).toEqual(liveTrace);
+  });
+
+  it("returns null on non-ok route response", async () => {
+    mockFetch(async () => nonOk(502));
+    const api = await importApi();
+    api.setDemoStage("completed");
+    const out = await api.generateAuditTrace("p-patrick");
+    expect(out).toBeNull();
+  });
+
+  it("returns null when route response is missing { trace } or has wrong shape", async () => {
+    // Arity 1: object lacking the trace key.
+    mockFetch(async () => okJson({ data: ["a", "b", "c"] }));
+    let api = await importApi();
+    api.setDemoStage("completed");
+    expect(await api.generateAuditTrace("p-patrick")).toBeNull();
+
+    // Arity 2: trace is present but not an array of strings.
+    vi.resetModules();
+    (globalThis as { window?: unknown }).window = makeWindow();
+    mockFetch(async () => okJson({ trace: [1, 2, 3] }));
+    api = await importApi();
+    api.setDemoStage("completed");
+    expect(await api.generateAuditTrace("p-patrick")).toBeNull();
+  });
+
+  it("returns null when fetch throws", async () => {
+    mockFetch(async () => {
+      throw new TypeError("network down");
+    });
+    const api = await importApi();
+    api.setDemoStage("completed");
+    const out = await api.generateAuditTrace("p-patrick");
+    expect(out).toBeNull();
+  });
+});
