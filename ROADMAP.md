@@ -49,7 +49,8 @@ The agent already drafts a real brief. Publish is a stub. To make Publish do wha
 
 - Hosted Postgres (Neon, Supabase, or self-hosted RDS).
 - Deployment pipeline (Vercel or equivalent), staging + prod environments, env var promotion.
-- Migrations management (Prisma Migrate in CI).
+- Migrations management (Prisma Migrate in CI). The schema-first + raw SQL migration pattern we use locally maps directly — `prisma/migrations/` becomes the audit trail for every prod schema change.
+- Preserve the dev/test database split in CI: spin up a Postgres service per workflow run, point `DATABASE_URL_TEST` at it, and run the seed smoke tests against a clean schema every commit. Today that pattern runs on developer machines; production-grade discipline is making it run on every PR.
 - Backups, point-in-time recovery, RTO/RPO targets.
 - Metrics, structured logs, and an error tracker (Sentry).
 - Uptime monitoring on the agent routes.

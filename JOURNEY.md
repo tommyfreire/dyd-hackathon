@@ -37,11 +37,19 @@ Two invariants the validators enforce that aren't obvious from the prompts alone
 
 Caching is in place via `withCache` with single-flight protection. The Daremaster's "Re-generate" button busts cache with a nonce so the user actually gets a new variation.
 
-### 3. Persistence pivot
+### 3. Persistence pivot — and why it was actually a testing-strategy decision
 
 Moved world state from `localStorage` to Postgres 16 via Prisma, running in Docker. Container port mapped to 5433 to avoid clashing with any local Postgres install. The four `?act=` URLs each trigger a deterministic seed flow that truncates the owned tables and inserts the right rows for that lifecycle position.
 
-The pivot preserved the agent layer untouched — the shapes the agents consume didn't change, only where they were assembled from. Tested by re-running the full UI walkthrough at each lifecycle stage against the database via Prisma Studio.
+On its face this round was about "make persistence real." In practice the real motivation was testability. Three things became possible only after the pivot:
+
+- **Every assertion about the app's state became verifiable.** With localStorage, the only way to confirm "the audit recorded 9 validated items for Patrick at day 14" was to dump the React state in the console. With Postgres + Prisma Studio, you open a row and read the column. The manual UX walkthrough that closed the project relied on this — each stage had a written checklist of expected DB row counts, and Prisma Studio confirmed or refuted each one. Without that layer, the walkthrough is unverifiable theatre.
+- **A second database for tests.** `DATABASE_URL_TEST` points at `dyd_test` on the same Docker container. Seed smoke tests target it without touching dev state. The split is what lets `npm test` make real assertions ("after `seedAll('day_14', 'admin')`, exactly four AuditResult rows exist") instead of stubbed assertions against fake data.
+- **A typed query surface that matches the runtime.** Prisma's generated client means every query is checked at `tsc --noEmit`. Mismatches between the schema and the code surface at compile time, not at the moment a query throws in production. That feedback loop is what made the migration safe even though it touched essentially every data-reading path in the app.
+
+Prisma specifically was the right choice over alternatives. Raw SQL would have meant hand-maintaining query/return types and the migration discipline. SQLite was tempting but would have hidden Postgres-specific issues (typing, casing, JSON columns) until deploy. A heavier ORM like TypeORM would have brought in decorators and metadata I didn't want. Prisma's schema-first model with auto-generated client and SQL migrations under `prisma/migrations/` is exactly the production shape, scaled down to a developer laptop.
+
+The pivot preserved the agent layer untouched — the shapes the agents consume didn't change, only where they were assembled from. That clean handoff is what made the round low-risk: existing code didn't need to learn about persistence, only the new `src/server/world.ts` and `src/server/actions/*.ts` modules did.
 
 ### 4. Live verification
 
@@ -77,9 +85,11 @@ Single Node script that runs all four agent routes against the real provider. Re
 
 A $15 budget buys ~500 cold runs at Haiku 4.5 prices.
 
-### Layer 3 — Manual walkthrough
+### Layer 3 — Manual walkthrough, verified against the database
 
 I sat down with the app, walked through all four lifecycle URLs, and reported the UX issues I found. The architect (me, with a different hat on) prioritized them and the implementer (also me) shipped the fixes. The walkthrough surfaced ~8 distinct issues that the first two layers couldn't have caught.
+
+The walkthrough was only credible because of Prisma Studio. Each stage's expected state was written down ahead of time (row counts in `Participant`, `EvidencePacket`, `AuditResult`, `FeedPost`, and the active handoff flags on `ChallengeState`); Prisma Studio confirmed or refuted each one. The PASS/FAIL verdict per stage was a fact, not a feeling.
 
 ---
 
