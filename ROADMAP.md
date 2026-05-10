@@ -39,7 +39,7 @@ The Audit Assistant currently reads pre-computed booleans (`hasMetric`, `hasPerm
 The agent already drafts a real brief. Publish is a stub. To make Publish do what the UI promises:
 
 - Persist a new `Challenge` row and scaffold its evidence/audit/participant tables.
-- Trigger Daremaster launch-video generation for the new Dare (text-to-video service or recorded template + voice synthesis).
+- Trigger Daremaster launch-video generation for the new Dare (text-to-video service, or a templated render with voice synthesis).
 - Switch the new challenge into the `activeChallengeId` slot.
 - Broadcast the launch post on the feed.
 - Send the company-wide registration notification.
