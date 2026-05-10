@@ -44,13 +44,56 @@ Combine with commas: `/?act=gabo:completed:hype,growth`.
 
 ---
 
-## What's mocked, what's real
+## What's provider-ready, what's mocked
 
-As of Step 1: **everything is mocked.** Auth (Tomi/Gabo are seeded users), data (single hand-authored challenge with hand-authored evidence packets), persistence (localStorage only), all four agents (pure deterministic functions in `src/agents/*.ts`).
+After Step 2, the provider-backed agent routes (`/api/agents/...`) and server-side validators are implemented end-to-end. The hackathon submission build is not exercised against a real Anthropic provider; the provider path is validated through mocked-fetch automated tests, and the running demo uses deterministic no-key fallbacks.
 
-Step 2 replaces selected agent mocks with real LLM-driven implementations. Auth, seed data, and the localStorage state model stay mocked. See `STEP2_BRIEF.md`.
+| Subsystem | Status | Notes |
+|---|---|---|
+| **Daremaster** (feed posts) | provider-ready for `insight` and `winner`; deterministic in the submission build | Pre-handoff `trivial` mode is always deterministic to preserve the recorded demo beat. Public posts may not quote audit/formula scores; the validator enforces this. |
+| **Growth Insight Extractor** | provider-ready; deterministic in the submission build | The provider path validates grounding against the approved corpus. `totals` and `generatedAt` are server-computed, never trusted from the model. |
+| **Challenge Designer** | provider-ready; deterministic in the submission build | The provider path validates and normalizes output: rubric weights → 100, audit contract mirrored, `finalDecisionOwner = "admins"` enforced. |
+| **AI Audit Assistant** | partial provider-ready; deterministic scoring always authoritative | Only the `trace` can be rewritten by the provider path. Scores, flags, validated counts, and the recommendation are unchanged. |
+| Auth | mocked | Tomi/Gabo are seeded users. The `?act=` URL is a recording mechanism, not real auth. |
+| Seed data | mocked | DYD #001 + four hand-authored evidence packets in `src/lib/mock-data.ts`. |
+| Persistence | mocked | localStorage only. No backend, no DB. |
 
-The recorded demo is the canonical product surface; live agent outputs may diverge in tone/wording/numbers from what the videos show. See `DEMO.md` for the divergence rule.
+### Required environment variables
+
+Provider-ready agent routes read these server-side at request time. Demos work without them — every route wrapper falls back to its deterministic agent on missing-key, network failure, or invalid output.
+
+```
+ANTHROPIC_API_KEY=...               # required for any live agent run
+ANTHROPIC_MODEL=claude-haiku-4-5    # optional; defaults to a fast Claude model
+```
+
+Both must be plain server-side env vars. **Never** prefix with `NEXT_PUBLIC_` and never reference them from a `"use client"` component.
+
+### No-key fallback
+
+Run the app without `ANTHROPIC_API_KEY` and every demo path still works:
+
+- The Daremaster card produces the recorded trivial / insight / winner posts deterministically.
+- The Growth Insight Extractor produces the deterministic asset bundle.
+- The Challenge Designer produces a template-matched brief.
+- The score receipt shows the deterministic trace.
+
+This makes the recording reproducible from any machine without a key.
+
+### What activates with a key
+
+Drop `ANTHROPIC_API_KEY` into `.env.local` and restart `npm run dev` to activate the provider path for:
+
+- Daremaster `insight` and `winner` generations. `trivial` mode remains deterministic.
+- Growth Insight Extractor asset generation on `/insights`.
+- Challenge Designer brief drafting in the modal.
+- AI Audit Assistant score-receipt trace rewriting.
+
+This provider path is built and covered by mocked-fetch automated tests. It has not been end-to-end verified against a real Anthropic provider in the hackathon submission build.
+
+### Divergence rule
+
+The recorded demo is the canonical product surface. Provider-generated outputs may diverge in tone, wording, or specific numbers from what the videos show — **structural beats** must hold (admin sends snapshot → next post is sharper, etc.) but specific phrasing is allowed to drift. See `DEMO.md`.
 
 ---
 

@@ -5,7 +5,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Avatar } from "@/components/ui/Avatar";
 import { Icon } from "@/components/ui/Icon";
 import { useToast } from "@/components/ui/Toast";
-import { design } from "@/agents/challenge-designer";
+import { designChallenge } from "@/lib/api";
 import type { ChallengeBrief } from "@/agents/types";
 
 
@@ -21,15 +21,14 @@ export function DesignerModal({ open, onClose }: { open: boolean; onClose: () =>
     setLoading(true);
     setErr("");
     setBrief(null);
-    setTimeout(() => {
-      try {
-        setBrief(design({ prompt: idea }));
-      } catch {
-        setErr("The Designer agent couldn't produce a brief. Try a different idea.");
-      } finally {
-        setLoading(false);
-      }
-    }, 600);
+    try {
+      const draft = await designChallenge({ prompt: idea });
+      setBrief(draft);
+    } catch {
+      setErr("The Designer agent couldn't produce a brief. Try a different idea.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const reset = () => {

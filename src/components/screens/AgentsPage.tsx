@@ -16,17 +16,15 @@ import { PageHead } from "@/components/shell/PageHead";
 import { useRole } from "@/lib/role-context";
 import { useStage } from "@/lib/stage-context";
 import {
-  buildDaremasterSnapshot,
+  generateDaremasterPost,
   getAgents,
-  getAuditQueue,
   getGrowthInsightSent,
   getDaremasterInsightSent,
-  getParticipants,
   postDaremasterMessage,
   setFeedPostPinned,
+  type DaremasterMode,
 } from "@/lib/api";
-import * as daremaster from "@/agents/daremaster";
-import type { AgentKind, AgentSnapshot, AuditResult, FeedPost, Participant } from "@/lib/types";
+import type { AgentKind, AgentSnapshot, FeedPost } from "@/lib/types";
 import type { DaremasterPost } from "@/agents/types";
 import { DesignerModal } from "./DesignerModal";
 
@@ -172,54 +170,6 @@ function AuditAgentCard({ snapshot }: { snapshot: AgentSnapshot }) {
 
 // ─── Daremaster ────────────────────────────────────────────────────────────
 
-const TRIVIAL_VARIANTS: string[] = [
-  "The Hype Ranking is heating up. Keep going — every testimonial counts.",
-  "Numbers are climbing. Stay focused, the deadline is approaching.",
-  "Daredevils are moving fast. Don't fall behind.",
-];
-
-/** Builds the final-stage winner post. Scores stay between the audit and the admin. */
-async function buildWinnerPost(): Promise<string> {
-  const [audits, parts] = await Promise.all([
-    getAuditQueue("dyd-001"),
-    getParticipants("dyd-001"),
-  ]);
-  const find = (id: string): { a: AuditResult | undefined; p: Participant | undefined } => ({
-    a: audits.find((x) => x.participantId === id),
-    p: parts.find((x) => x.id === id),
-  });
-  const bob = find("p-bob");
-  const pat = find("p-patrick");
-  const patValidated = pat.a?.validatedItems ?? 0;
-  const bobLead = bob.p?.selfReportedValue ?? 0;
-  return (
-    `Patrick wins DYD #001. ${patValidated} polished testimonials, every story validated, business impact named in every clip. ` +
-    `Bob's ${bobLead}-strong Hype lead held for two weeks, but the audit's quality blend tipped the board. ` +
-    `Marketing has already turned the corpus into reusable assets — quotes, case studies, sales snippets, LinkedIn drafts.`
-  );
-}
-
-/** Builds the strong "Charlie dark horse" Day-14 post. No scores leaked. */
-async function buildInsightPost(): Promise<string> {
-  const [audits, parts] = await Promise.all([
-    getAuditQueue("dyd-001"),
-    getParticipants("dyd-001"),
-  ]);
-  const find = (id: string): { a: AuditResult | undefined; p: Participant | undefined } => ({
-    a: audits.find((x) => x.participantId === id),
-    p: parts.find((x) => x.id === id),
-  });
-  const bob = find("p-bob");
-  const cha = find("p-charlie");
-  const bobLead = bob.p?.selfReportedValue ?? 0;
-  const charlieValidated = cha.a?.validatedItems ?? 0;
-  return (
-    `Charlie is the dark horse. ${charlieValidated} clean testimonials, perfect permissions, every story specific. ` +
-    `Bob leads the Hype Ranking with ${bobLead} self-reported — but the audit weighs quality just as hard, ` +
-    `and on substance both Patrick and Charlie are ahead of him. Quality is rewriting the leaderboard.`
-  );
-}
-
 function DaremasterCard({ snapshot }: { snapshot: AgentSnapshot }) {
   const { stage } = useStage();
   const t = useToast();
@@ -315,21 +265,15 @@ function DaremasterCard({ snapshot }: { snapshot: AgentSnapshot }) {
     setGenerating(true);
     setPosted(null);
     try {
-      const snap = await buildDaremasterSnapshot();
-      const base = daremaster.generate(snap);
-      let content: string;
-      if (isCompleted && bothFinalReady) {
-        content = await buildWinnerPost();
-      } else if (!isCompleted && insightReady) {
-        content = await buildInsightPost();
-      } else {
-        content = TRIVIAL_VARIANTS[trivialIdx % TRIVIAL_VARIANTS.length];
+      let mode: DaremasterMode;
+      if (isCompleted && bothFinalReady) mode = "winner";
+      else if (!isCompleted && insightReady) mode = "insight";
+      else {
+        mode = "trivial";
         setTrivialIdx((i) => i + 1);
       }
-      // Brand-new posts have no reactions until people engage with them.
-      // The preview should mirror what the feed will actually look like.
-      const freshReactions = { fire: 0, clap: 0, rocket: 0, eyes: 0, trophy: 0 };
-      setDraft({ ...base, content, reactions: freshReactions });
+      const post = await generateDaremasterPost(mode, { trivialIdx });
+      setDraft(post);
     } finally {
       setGenerating(false);
     }

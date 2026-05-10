@@ -12,6 +12,7 @@ import { useStage } from "@/lib/stage-context";
 import {
   adminDeclareWinner,
   adminOverrideScore,
+  generateAuditTrace,
   getAuditQueue,
   getDaremasterInsightSent,
   getParticipants,
@@ -764,10 +765,34 @@ function CompareView({ p, a, accent, formula, onOverride, compact }: CompareView
 
 function ScoreReceipt({ audit, formula }: { audit: AuditResult; formula: ScoringFormulaConfig }) {
   const [open, setOpen] = useState(false);
-  const auditTrace = audit.trace ?? [];
+  const [liveTrace, setLiveTrace] = useState<string[] | null>(null);
+  const [loadingTrace, setLoadingTrace] = useState(false);
+  const fallbackTrace = audit.trace ?? [];
+  const auditTrace = liveTrace ?? fallbackTrace;
   const fTrace = formulaTrace(audit, formula);
   const q = qualityComponent(audit, formula).toFixed(1);
   const n = quantityComponent(audit, formula).toFixed(1);
+
+  // Lazy-load a fresher LLM-rewritten trace the first time the receipt opens.
+  // If anything goes wrong (no key, network, validation) we silently keep
+  // showing the deterministic `audit.trace`.
+  useEffect(() => {
+    if (!open || liveTrace || loadingTrace) return;
+    setLoadingTrace(true);
+    let cancelled = false;
+    (async () => {
+      try {
+        const t = await generateAuditTrace(audit.participantId);
+        if (!cancelled && t) setLiveTrace(t);
+      } finally {
+        if (!cancelled) setLoadingTrace(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, audit.participantId, liveTrace, loadingTrace]);
+
   return (
     <div style={{ marginTop: 12 }}>
       <button

@@ -20,8 +20,13 @@ import {
   type DemoStage,
 } from "./demo-stages";
 import { audit } from "@/agents/audit-assistant";
+import { design } from "@/agents/challenge-designer";
+import { generate as generateDaremasterFallback } from "@/agents/daremaster";
 import { extract } from "@/agents/insight-extractor";
 import type {
+  AuditFindings,
+  ChallengeBrief,
+  ChallengeDesignerInput,
   DaremasterPost,
   DaremasterSnapshot,
   InsightBundle,
@@ -217,6 +222,23 @@ export async function getGrowthAssets(_challengeId: string = "dyd-001"): Promise
         if (!a) return false;
         return a.recommendation !== "Needs manual review";
       });
+
+  // Try the live extractor; fall back to the deterministic agent on any error
+  // (no key, network, validation, etc.). Demos work without an API key.
+  if (typeof window !== "undefined" && packetsToUse.length > 0) {
+    try {
+      const res = await fetch("/api/agents/insight-extractor", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ approvedPackets: packetsToUse, rejectedCount }),
+      });
+      if (res.ok) {
+        return (await res.json()) as InsightBundle;
+      }
+    } catch {
+      // fall through to deterministic extract()
+    }
+  }
 
   return delay(extract({ approvedPackets: packetsToUse, rejectedCount }));
 }
@@ -491,6 +513,121 @@ export async function buildDaremasterSnapshot(): Promise<DaremasterSnapshot> {
   });
 }
 
+// ─── Daremaster post generation (live + deterministic fallback) ────────────
+//
+// `generateDaremasterPost` is the screen-facing entry point. It:
+//   1. Builds a snapshot (with audit enrichment for non-trivial modes).
+//   2. Calls the live route at /api/agents/daremaster.
+//   3. Returns the validated post on 2xx.
+//   4. Falls back to a deterministic post (template trigger + scripted
+//      content) if the route is unavailable, fails, or returns invalid data.
+//
+// Trivial mode never hits the live route — the recorded demo's pre-handoff
+// beat is intentionally generic, and we don't want LLM output to drift into
+// premature dark-horse commentary before the audit handoff.
+
+const TRIVIAL_VARIANTS: string[] = [
+  "The Hype Ranking is heating up. Keep going — every testimonial counts.",
+  "Numbers are climbing. Stay focused, the deadline is approaching.",
+  "Daredevils are moving fast. Don't fall behind.",
+];
+
+const FRESH_REACTIONS = { fire: 0, clap: 0, rocket: 0, eyes: 0, trophy: 0 } as const;
+
+export type DaremasterMode = "trivial" | "insight" | "winner";
+
+export interface GenerateDaremasterOptions {
+  /** Index into TRIVIAL_VARIANTS for the trivial mode rotation. Ignored otherwise. */
+  trivialIdx?: number;
+}
+
+export async function generateDaremasterPost(
+  mode: DaremasterMode,
+  opts: GenerateDaremasterOptions = {}
+): Promise<DaremasterPost> {
+  const snapshot = await buildDaremasterSnapshot();
+  const enriched = mode === "trivial" ? snapshot : await enrichSnapshotWithAudit(snapshot);
+
+  // Trivial mode: deterministic only, to keep the recorded pre-handoff beat
+  // intact regardless of API key / model behavior.
+  if (mode === "trivial") {
+    return deterministicDaremasterPost(enriched, "trivial", opts.trivialIdx ?? 0);
+  }
+
+  // Live attempt.
+  if (typeof window !== "undefined") {
+    try {
+      const res = await fetch("/api/agents/daremaster", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ snapshot: enriched, mode }),
+      });
+      if (res.ok) {
+        const live = (await res.json()) as DaremasterPost;
+        return { ...live, reactions: { ...FRESH_REACTIONS } };
+      }
+    } catch {
+      // Fall through to deterministic.
+    }
+  }
+
+  return deterministicDaremasterPost(enriched, mode, opts.trivialIdx ?? 0);
+}
+
+async function deterministicDaremasterPost(
+  snapshot: DaremasterSnapshot,
+  mode: DaremasterMode,
+  trivialIdx: number
+): Promise<DaremasterPost> {
+  const base = generateDaremasterFallback(snapshot);
+  let content: string;
+  if (mode === "winner") content = await buildWinnerPostContent();
+  else if (mode === "insight") content = await buildInsightPostContent();
+  else content = TRIVIAL_VARIANTS[trivialIdx % TRIVIAL_VARIANTS.length];
+  return { ...base, content, reactions: { ...FRESH_REACTIONS } };
+}
+
+/**
+ * Stitch the audit's qualityScore onto each ranking entry so the model has
+ * signal about quality vs. volume tension. We never pass the formula
+ * itself — the model must not reason about (or expose) the formula math.
+ */
+async function enrichSnapshotWithAudit(
+  snapshot: DaremasterSnapshot
+): Promise<DaremasterSnapshot> {
+  const s = hydrate();
+  const ranking = snapshot.ranking.map((r) => {
+    const a = s.audits[r.id];
+    if (!a) return r;
+    return { ...r, auditScore: a.qualityScore };
+  });
+  return { ...snapshot, ranking };
+}
+
+/** Deterministic Day-14 "Charlie's the dark horse" copy, with no scores. */
+async function buildInsightPostContent(): Promise<string> {
+  const s = hydrate();
+  const bobLead = s.participants.find((p) => p.id === "p-bob")?.selfReportedValue ?? 0;
+  const charlieValidated = s.audits["p-charlie"]?.validatedItems ?? 0;
+  return (
+    `Charlie is the dark horse. ${charlieValidated} clean testimonials, perfect permissions, every story specific. ` +
+    `Bob leads the Hype Ranking with ${bobLead} self-reported — but the audit weighs quality just as hard, ` +
+    `and on substance both Patrick and Charlie are ahead of him. Quality is rewriting the leaderboard.`
+  );
+}
+
+/** Deterministic completed-stage winner announcement, with no scores. */
+async function buildWinnerPostContent(): Promise<string> {
+  const s = hydrate();
+  const bobLead = s.participants.find((p) => p.id === "p-bob")?.selfReportedValue ?? 0;
+  const patValidated = s.audits["p-patrick"]?.validatedItems ?? 0;
+  return (
+    `Patrick wins DYD #001. ${patValidated} polished testimonials, every story validated, business impact named in every clip. ` +
+    `Bob's ${bobLead}-strong Hype lead held for two weeks, but the audit's quality blend tipped the board. ` +
+    `Marketing has already turned the corpus into reusable assets — quotes, case studies, sales snippets, LinkedIn drafts.`
+  );
+}
+
 /** Persist a Daremaster post to the feed and return the resulting FeedPost. */
 export async function postDaremasterMessage(
   post: DaremasterPost,
@@ -543,4 +680,64 @@ export async function runAudit(participantId: string): Promise<AuditResult | nul
   s.audits[participantId] = findings;
   persist();
   return delay(findings);
+}
+
+/**
+ * Lazy-load a fresher human-readable audit trace from the LLM. Returns null
+ * if no key, no audit, the network call fails, or the model output is
+ * invalid — callers must keep showing the deterministic `audit.trace` in
+ * that case. Deterministic scoring is unchanged either way.
+ */
+export async function generateAuditTrace(
+  participantId: string
+): Promise<string[] | null> {
+  if (typeof window === "undefined") return null;
+  const packet = evidencePackets[participantId];
+  if (!packet) return null;
+  const s = hydrate();
+  const findings = s.audits[participantId] as AuditFindings | undefined;
+  if (!findings) return null;
+  try {
+    const res = await fetch("/api/agents/audit-assistant/trace", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        packet,
+        contract: currentChallenge.auditContract,
+        findings,
+      }),
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { trace?: unknown };
+    if (!Array.isArray(data.trace)) return null;
+    if (!data.trace.every((line) => typeof line === "string")) return null;
+    return data.trace as string[];
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Generate a ChallengeBrief from a one-line idea. Tries the live route first;
+ * falls back to the deterministic template-matched designer when the route
+ * is unavailable or returns invalid output.
+ */
+export async function designChallenge(
+  input: ChallengeDesignerInput
+): Promise<ChallengeBrief> {
+  if (typeof window !== "undefined" && input.prompt?.trim()) {
+    try {
+      const res = await fetch("/api/agents/challenge-designer", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(input),
+      });
+      if (res.ok) {
+        return (await res.json()) as ChallengeBrief;
+      }
+    } catch {
+      // fall through to deterministic design()
+    }
+  }
+  return design(input);
 }
