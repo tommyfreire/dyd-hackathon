@@ -5,6 +5,7 @@ Run after the automated suite is green. Fill in pass/fail per row, note any defe
 ## Setup
 
 - [ ] `unset ANTHROPIC_API_KEY ANTHROPIC_MODEL`
+- [ ] `npm run db:setup`
 - [ ] `npm run dev` (cold start; use the port Next prints, usually 3000 or 3001 if 3000 is busy)
 - [ ] DevTools Network panel open, filter on `/api/agents/`
 
@@ -12,7 +13,28 @@ Run after the automated suite is green. Fill in pass/fail per row, note any defe
 
 ---
 
+## Stage 0 — DB Pre-Flight
+
+**Result: PASS** (interactive walkthrough, 2026-05-10)
+
+Row counts confirmed via Prisma Studio after each `?act=` URL. Highlights: trim logic survived the persistence rewire — day_14 shows 35 EvidenceItems (Bob's packet trimmed from 18 → 13) vs completed's 40 (full packets). FeedPost grows 1 → 4 → 11 → 13 across the four stages as expected. ChallengeState handoff flags covered by the four green seed smoke tests.
+
+Run before the browser clickthrough.
+
+| # | Check | Pass | Notes |
+|---|---|---|---|
+| 1 | Docker Desktop is running; `docker compose ps` shows `dyd-postgres` healthy | ☐ | |
+| 2 | `npm run db:setup` completes without errors and creates `.env` if missing | ☐ | |
+| 3 | Visit `http://localhost:3000/?act=gabo:day_14`; URL strips `act` and reloads | ☐ | |
+| 4 | `npm run db:studio` shows non-zero rows in `Challenge`, `Participant`, `EvidencePacket`, `EvidenceItem`, `AuditResult`, and `FeedPost` | ☐ | |
+| 5 | `ChallengeState` has `currentStage = day_14`, `currentUserId = u-admin`, `daremasterInsightSent = false`, `growthInsightSent = false` | ☐ | |
+| 6 | Repeat with `/?act=tomi:launch`; `ChallengeState.currentStage = launch`, no participants are registered, and the feed has only the launch Daremaster post | ☐ | |
+
+---
+
 ## Stage 1 — Launch (Tomi · Participant)
+
+**Result: PASS** (interactive walkthrough, 2026-05-10)
 
 URL: `http://localhost:3000/?act=tomi:launch`
 
@@ -30,6 +52,10 @@ URL: `http://localhost:3000/?act=tomi:launch`
 
 ## Stage 2 — Day 3 (Tomi · Participant)
 
+**Result: PASS** (interactive walkthrough, 2026-05-10)
+
+The submit moment was the new-this-round pressure point: after submitting a testimonial, the Testimonials KPI auto-bumped, the Hype rank updated, and the screen reflected the new state without a full page reload — server action mutation + `dyd:state-changed` refresh chain held under the DB rewire.
+
 URL: `http://localhost:3000/?act=tomi:day_3`
 
 | # | Check | Pass | Notes |
@@ -44,6 +70,10 @@ URL: `http://localhost:3000/?act=tomi:day_3`
 ---
 
 ## Stage 3 — Day 14 (Gabo · Admin)
+
+**Result: PASS** (interactive walkthrough, 2026-05-10) — both 3a (pre-handoff) and 3b (audit-snapshot handoff)
+
+The agent-to-agent moment is the riskiest beat of the demo and it survived the persistence pivot intact. Trivial mode bypass holds (no `/api/agents/daremaster` calls during pre-handoff generates). After `Send snapshot to Daremaster`, the 4-second loader plays from the DB-backed `ChallengeState.daremasterInsightSent` flag, then the Charlie-dark-horse fallback content renders cleanly. Pin lands on `/feed`.
 
 URL: `http://localhost:3000/?act=gabo:day_14`
 
@@ -78,6 +108,10 @@ URL: `http://localhost:3000/?act=gabo:day_14`
 ---
 
 ## Stage 4 — Completed (Gabo · Admin)
+
+**Result: PASS** (interactive walkthrough, 2026-05-10) — all four sub-flows (4a admin review + winner, 4b growth insights, 4c winner post + CTA, 4d Designer modal)
+
+The most schema-touching beat of the demo. Score override → DB write → display update; `Accept Scores` → ranking modal → `Declare Patrick` → `Challenge.winnerId = "p-patrick"` write → Growth Insights tab unlocks → CTA modal fires. Growth bundle renders; `Send insights to Daremaster` flips `ChallengeState.growthInsightSent`. Winner post carries the `See the growth report` CTA, which navigates to `/insights`. Designer modal handles both normal and hostile prompts — deterministic template-matched briefs in both cases.
 
 URL: `http://localhost:3000/?act=gabo:completed`
 
@@ -136,19 +170,22 @@ URL: `http://localhost:3000/?act=gabo:completed`
 > For each finding, note: **screen/route**, **stage**, **whether the issue is deterministic-fallback / UI / docs wording**, and **proposed fix** (don't apply if it changes product behavior — wait for architect sign-off).
 
 ### P0
-- (none yet — fill in if found)
+- None.
 
 ### P1
-- (none yet)
+- None.
 
 ### P2
-- (none yet)
+- None blocking. One observation captured below for handoff/production cleanup, deferred from this round on cost-vs-risk grounds:
+  - **Internal IDs `u-sofia` / `p-sofia` should be `u-tomi` / `p-tomi`.** The demo's participant was renamed Sofia → Tomi a long time ago in the user-visible UI, but the internal identifiers carried through unchanged. Surface area is large (`mock-data.ts`, `src/server/seed/*`, `src/server/world.ts` role mapping, `src/lib/api.ts` legacy fallbacks, `src/agents/*` audit-trim references, `prisma/migrations/*` literal IDs, ~10 test references, plus any persisted DB rows). Zero user-visible benefit. Tracked as production TODO in `NEXT_STEPS.md` rather than fixed pre-deadline.
 
 ---
 
 ## Verdict
 
-- [ ] All stages pass without P0/P1.
-- [ ] Wrapper fallbacks are visibly producing the deterministic content (no provider-error UI).
-- [ ] No score leakage on any Daremaster post.
-- [ ] Ready to proceed to final documentation / handoff cleanup.
+- [x] All stages pass without P0/P1.
+- [x] Wrapper fallbacks are visibly producing the deterministic content (no provider-error UI).
+- [x] No score leakage on any Daremaster post.
+- [x] Ready to proceed to final documentation / handoff cleanup.
+
+**Sign-off:** Tomi, 2026-05-10. Persistence pivot verified end-to-end on the no-key fallback path. Cleared to begin Step 4 (live agent test scaffolding).

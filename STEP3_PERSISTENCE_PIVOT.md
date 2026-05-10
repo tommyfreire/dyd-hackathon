@@ -1,6 +1,6 @@
 # Step 3 — Real Persistence Layer
 
-This step replaces the localStorage-backed world state with a real database (SQLite + Prisma). The user's input that filled rows from Day 1 through Day 14 is **still** mocked — fired by seed scripts, not by Tomi typing — but everything downstream of those rows operates on real persisted data. The four agents, the audits, the feed, the rankings: all read from real tables.
+This step replaces the localStorage-backed world state with a real database (Postgres 16 in Docker, accessed via Prisma). The user's input that filled rows from Day 1 through Day 14 is **still** mocked — fired by seed scripts, not by Tomi typing — but everything downstream of those rows operates on real persisted data. The four agents, the audits, the feed, the rankings: all read from real tables.
 
 This **supersedes** the "Persistence stays localStorage" lock that was set in `NEXT_STEPS.md` Step 2 and reflected in `PRODUCT.md` / `ARCHITECTURE.md`. Those docs must be updated as part of this work.
 
@@ -204,7 +204,7 @@ Rewired:
 - `src/lib/api.test.ts` — instead of stubbing `window.localStorage` and mocking `fetch`, mock the server actions with `vi.mock("@/server/actions/...")`. All 20 assertions stay; the harness changes.
 
 Added:
-- `tests/seed/<stage>.test.ts` — one smoke test per seed function. Approach: run the seed against a temp SQLite file, query the resulting tables, assert row counts and key invariants:
+- `tests/seed/<stage>.test.ts` — one smoke test per seed function. Approach: connect to the test database (`DATABASE_URL_TEST`), `TRUNCATE … RESTART IDENTITY CASCADE` the world tables in `beforeEach`, run the seed, query the resulting tables, assert row counts and key invariants:
   - `seedLaunch`: zero participants registered, zero audits, only the launch Daremaster post in the feed.
   - `seedDay3`: Tomi has `selfReportedValue >= 1`, no audits.
   - `seedDay14`: audits exist for the four contenders, `daremasterInsightSent === false`.

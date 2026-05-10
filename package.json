@@ -8,9 +8,17 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "db:setup": "node scripts/db-setup.mjs",
+    "db:reset": "docker compose down -v && npm run db:setup",
+    "db:studio": "prisma studio",
+    "db:seed": "tsx scripts/run-seed.ts",
+    "docker:up": "docker compose up -d --wait",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f postgres"
   },
   "dependencies": {
+    "@prisma/client": "^6.8.2",
     "lucide-react": "^0.460.0",
     "next": "^14.2.33",
     "react": "^18.3.1",
@@ -23,6 +31,8 @@
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.13",
+    "prisma": "^6.8.2",
+    "tsx": "^4.19.4",
     "typescript": "^5.6.2",
     "vitest": "3.2.4"
   }

@@ -8,7 +8,7 @@ This is the canonical product description. If anything in this file conflicts wi
 
 **DYD ("Do You Dare")** is an internal growth-challenge platform for BairesDev employees. The company runs time-boxed Dares (e.g. "collect client testimonials in 14 days"); employees register, self-report progress on a public Hype Ranking, submit evidence, and the winner is decided by an admin-supervised AI audit. The whole loop is wrapped in social mechanics (a feed, a leaderboard, reactions) and the operational work is handled by four AI agents.
 
-The pitch: most hackathon entries are automation-first. DYD flips it — the **game** is what makes employees show up; the **AI** is what makes the game scale to the whole company. Every credible mock-to-real swap on the agentic side strengthens that thesis.
+The pitch: most hackathon entries are automation-first. DYD flips it — the **game** is what makes employees show up; the **AI** is what makes the game scale to the whole company. Every credible mock-to-real swap on the agentic and persistence sides strengthens that thesis.
 
 ## Audience
 
@@ -42,7 +42,7 @@ The platform is built as **a single repeatable engine**. The current challenge (
 
 ## The four AI agents
 
-Each agent is currently a **pure deterministic function** in `src/agents/*.ts` — no I/O, no LLM call. They are the canonical swap targets for Step 2.
+Each agent keeps a deterministic pure-function fallback in `src/agents/*.ts`. Step 2 added provider-ready route handlers for the selected live paths; the hackathon build runs without an Anthropic key, so the deterministic fallbacks remain the demo path.
 
 ### 1. Challenge Designer
 
@@ -122,9 +122,9 @@ The TopBar shows a static badge (`Tomi · Participant` or `Gabo · Admin`) — n
 | `day_14` | Gabo · Admin | Mid-challenge. Bob leads on volume but quality hasn't been weighed in. Audit Assistant has scored every participant's *trimmed* packet (current self-reported count). Admin can tune the formula and send a snapshot to the Daremaster, unlocking a sharper feed post. |
 | `completed` | Gabo · Admin | Submissions closed. Audit Assistant has done its full pass. Admin reviews submissions, overrides where needed, accepts scores, declares Patrick the winner, runs the Growth Insight Extractor, and ships the bundle back to the Daremaster for the winner announcement. |
 
-Stages are a **recording-time abstraction**: in production, state would advance organically as the challenge runs. In the demo, the snapshot for each stage is rebuilt atomically from `mock-data.ts` via `src/lib/demo-stages.ts` so each take starts from a deterministic state.
+Stages are a **recording-time abstraction**: in production, state would advance organically as the challenge runs. In the demo, each `?act=` URL translates the `src/lib/demo-stages.ts` snapshot into Postgres rows so each take starts from deterministic, queryable state.
 
-Two "handoff flags" travel inside the snapshot and gate Daremaster behavior:
+Two handoff flags live in `ChallengeState` and gate Daremaster behavior:
 
 - `daremasterInsightSent` — admin has shipped the Day-14 audit snapshot to the Daremaster. Unlocks the Charlie-dark-horse variant.
 - `growthInsightSent` — admin has shipped the Growth Insight Extractor bundle to the Daremaster. Unlocks the winner-announcement variant.
@@ -140,7 +140,7 @@ Final score = Quality × W%  +  Quantity × (100 − W)%   on a 0–10 scale
 - **Quality** = `qualityScore / 10`, where `qualityScore` is a 0–100 sum across the rubric criteria. Per-criterion weights are admin-tunable via the rubric editor inside the formula panel.
 - **Quantity** = `min(validatedItems / targetItems, 1) × 10`. `targetItems` is hidden from the UI and defaults to 12.
 - **Override**: admin can set an explicit `overrideScore` per participant; that value bypasses the formula.
-- **Persistence**: the formula config (qualityWeight, targetItems, optional rubricWeights override) lives in `localStorage` at `dyd:formula:v1`.
+- **Persistence**: shared world state lives in Postgres through Prisma. The formula config (qualityWeight, targetItems, optional rubricWeights override) remains a local UI tweak in `localStorage` at `dyd:formula:v1`.
 
 The displayed final score across the app is always `effectiveFinalScore(audit, formula)` — single source of truth in `src/lib/formula.ts`.
 
@@ -156,12 +156,12 @@ Public leaderboard. Sorted by `selfReportedValue` desc. Auto-bumps when a partic
 
 ---
 
-## Design constraints (carry into Step 2)
+## Design constraints
 
 - **No "mock" / "mocked" / "simulated" wording in the user-visible UI.** The fact that a backend is mocked is implementation detail.
 - **The recorded demo is the product surface.** Wording in the videos is canonical for the recording. Live LLM outputs may diverge in tone, wording, or specific numbers, but the structural beats (admin sends snapshot → next post is sharper, etc.) must hold.
 - **No scores in Daremaster posts.** Numerical scores from the audit are admin-private; Daremaster posts on the public feed never quote them. (Counts and qualitative descriptions are fine.)
-- **Auth stays mocked.** Tomi/Gabo are the only accounts. Out of scope to make real per NEXT_STEPS.md.
+- **Auth stays mocked.** Tomi/Gabo are seeded users selected by `?act=`.
 - **One challenge live at a time** (DYD #001). Multi-challenge concurrency is out of scope.
 - **Default to no comments in code.** Only annotate non-obvious *why*.
 - **Brief end-of-turn summaries from any future Claude sessions.** Don't section-header simple tasks.
@@ -172,11 +172,11 @@ Public leaderboard. Sorted by `selfReportedValue` desc. Auto-bumps when a partic
 
 - Multi-tenant / multi-org
 - Real authentication (OAuth, SSO, password reset)
-- Persistent backend / multi-device sync (currently localStorage only)
+- Production-grade backend concerns beyond the local Postgres demo layer (auth sessions, deployment, backups, concurrent orgs)
 - Real video transcription / vision analysis upstream of the Audit Assistant
 - Real-time collaboration / multi-admin
 - Mobile UI / responsive below desktop widths
 - Internationalization
 - Production deployment, monitoring, billing
 
-Some of these will appear on a "What's needed to take this to production" TODO in NEXT_STEPS.md Step 3. None of them block Step 2.
+Some of these will appear on a "What's needed to take this to production" TODO in NEXT_STEPS.md. None of them block the hackathon handoff.

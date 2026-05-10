@@ -1,0 +1,163 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String           @id
+  name           String
+  role           String
+  jobTitle       String
+  avatarInitials String?
+  participants   Participant[]
+  currentStates  ChallengeState[] @relation("CurrentUserState")
+}
+
+model Challenge {
+  id                    String               @id
+  number                String
+  title                 String
+  subtitle              String
+  description           String
+  sponsor               String
+  reward                String
+  rewardSubtitle        String
+  registrationDeadline  DateTime
+  submissionDeadline    DateTime
+  status                String
+  primaryMetricLabel    String
+  primaryMetricKey      String
+  hypeRankingDisclaimer String
+  rules                 Json
+  evidenceRequirements  Json
+  auditContract         Json
+  winnerId              String?
+  state                 ChallengeState?
+  participants          Participant[]
+  evidenceSubmissions   EvidenceSubmission[]
+  audits                AuditResult[]
+  feedPosts             FeedPost[]
+}
+
+model ChallengeState {
+  challengeId            String    @id
+  challenge              Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  currentStage           String
+  currentUserId          String
+  currentUser            User      @relation("CurrentUserState", fields: [currentUserId], references: [id])
+  daremasterInsightSent  Boolean   @default(false)
+  growthInsightSent      Boolean   @default(false)
+}
+
+model Participant {
+  id                 String               @id
+  userId             String
+  challengeId        String
+  name               String
+  role               String
+  avatarInitials     String
+  registered         Boolean
+  selfReportedValue  Int
+  evidenceStatus     String
+  hypeRank           Int
+  finalRank          Int?
+  badges             Json
+  strikeRisk         Boolean              @default(false)
+  strikeIssued       Boolean              @default(false)
+  movement           String               @default("flat")
+  user               User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  challenge          Challenge            @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  packet             EvidencePacket?
+  evidenceSubmission EvidenceSubmission?
+  auditResult        AuditResult?
+
+  @@index([challengeId])
+  @@index([userId])
+}
+
+model EvidencePacket {
+  id             String         @id
+  participantId  String         @unique
+  declaredMetric Int
+  participant    Participant    @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  items          EvidenceItem[]
+}
+
+model EvidenceItem {
+  id                String         @id
+  packetId          String
+  clientName        String
+  clientCompany     String
+  clientRole        String
+  lengthSeconds     Int
+  hasPermission     Boolean
+  hasBusinessImpact Boolean
+  hasMetric         Boolean
+  snippet           String
+  impactSummary     String
+  packet            EvidencePacket @relation(fields: [packetId], references: [id], onDelete: Cascade)
+
+  @@index([packetId])
+}
+
+model EvidenceSubmission {
+  id                    String      @id
+  participantId         String      @unique
+  challengeId           String
+  submittedAt           DateTime
+  files                 Json
+  clientName            String?
+  clientCompany         String?
+  clientRole            String?
+  permissionToUse       Boolean
+  businessImpactSummary String
+  participant           Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  challenge             Challenge   @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+
+  @@index([challengeId])
+}
+
+model AuditResult {
+  id                  String      @id
+  participantId       String      @unique
+  challengeId         String
+  declaredMetric      Int
+  validatedItems      Int
+  rejectedItems       Int
+  qualityScore        Float
+  qualityMultiplier   Float?
+  suggestedFinalScore Float
+  overrideScore       Float?
+  flags               Json
+  recommendation      String
+  adminStatus         String
+  rubricBreakdown     Json?
+  trace               Json?
+  participant         Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  challenge           Challenge   @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+
+  @@index([challengeId])
+}
+
+model FeedPost {
+  id          String    @id
+  challengeId String
+  author      String
+  authorRole  String?
+  authorType  String
+  content     String
+  createdAt   DateTime
+  reactions   Json
+  comments    Json?
+  pinned      Boolean   @default(false)
+  ctaLabel    String?
+  ctaHref     String?
+  challenge   Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+
+  @@index([challengeId])
+  @@index([createdAt])
+}

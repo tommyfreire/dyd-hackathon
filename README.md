@@ -8,14 +8,26 @@ The pitch: most hackathon entries are automation-first. DYD flips it — the **g
 
 ## Quick start
 
+Requirements: Node 20+, npm, and Docker Desktop (or another Docker engine) running.
+
 ```bash
 npm install
+npm run db:setup
 npm run dev
 ```
 
-Then open <http://localhost:3000>.
+Then open the URL Next prints, usually <http://localhost:3000>. The setup script starts Postgres 16 in Docker, applies Prisma migrations, creates the `dyd_test` database, and seeds the launch state.
+
+Useful DB commands:
 
 ```bash
+npm run db:studio     # inspect Postgres rows in Prisma Studio
+npm run db:reset      # wipe Docker volume, re-apply migrations, re-seed
+npm run docker:logs   # inspect Postgres container logs
+```
+
+```bash
+npm test              # automated tests
 npx tsc --noEmit     # type-check
 ```
 
@@ -56,9 +68,16 @@ After Step 2, the provider-backed agent routes (`/api/agents/...`) and server-si
 | **AI Audit Assistant** | partial provider-ready; deterministic scoring always authoritative | Only the `trace` can be rewritten by the provider path. Scores, flags, validated counts, and the recommendation are unchanged. |
 | Auth | mocked | Tomi/Gabo are seeded users. The `?act=` URL is a recording mechanism, not real auth. |
 | Seed data | mocked | DYD #001 + four hand-authored evidence packets in `src/lib/mock-data.ts`. |
-| Persistence | mocked | localStorage only. No backend, no DB. |
+| Persistence | real local Postgres | World state is stored in Postgres via Prisma. The `?act=` URLs seed rows for each demo stage; formula tuning remains in localStorage. |
 
 ### Required environment variables
+
+`npm run db:setup` copies `.env.example` to `.env` if needed. Defaults match `docker-compose.yml`:
+
+```
+DATABASE_URL=postgresql://dyd:dyd@localhost:5433/dyd?schema=public
+DATABASE_URL_TEST=postgresql://dyd:dyd@localhost:5433/dyd_test?schema=public
+```
 
 Provider-ready agent routes read these server-side at request time. Demos work without them — every route wrapper falls back to its deterministic agent on missing-key, network failure, or invalid output.
 
@@ -102,10 +121,10 @@ The recorded demo is the canonical product surface. Provider-generated outputs m
 | File | What it is |
 |---|---|
 | [`PRODUCT.md`](./PRODUCT.md) | What DYD is — agents, stages, scoring formula, design constraints. The product spec. |
-| [`ARCHITECTURE.md`](./ARCHITECTURE.md) | Code map. Stack, layer-by-layer responsibilities, mock-vs-real boundaries, localStorage keys, build/run. |
+| [`ARCHITECTURE.md`](./ARCHITECTURE.md) | Code map. Stack, data layer, mock-vs-real boundaries, persistence keys, build/run. |
 | [`DEMO.md`](./DEMO.md) | What the recorded demo shows + the divergence rule. |
 | [`STEP2_BRIEF.md`](./STEP2_BRIEF.md) | Briefing for the AI tool that will plan Step 2 (LLM swap-in scope). |
-| [`NEXT_STEPS.md`](./NEXT_STEPS.md) | The three-step plan. Step 1 done; Step 2 is active. |
+| [`NEXT_STEPS.md`](./NEXT_STEPS.md) | The three-step plan and current status. |
 | [`DEMO_SCRIPT.md`](./DEMO_SCRIPT.md) | The voice-over + stage directions used during recording. Working file; not part of the product spec. |
 | [`CLAUDE.md`](./CLAUDE.md) | Orientation for Claude Code sessions in this repo. |
 
@@ -116,6 +135,7 @@ The recorded demo is the canonical product surface. Provider-generated outputs m
 ```
 src/
 ├── app/                    Next.js routes (thin)
+│   └── api/                 Agent routes + seed route
 ├── components/
 │   ├── screens/            One file per page
 │   ├── shell/              TopBar, Sidebar, AppShell
@@ -127,7 +147,7 @@ src/
 │   ├── insight-extractor.ts
 │   └── types.ts            I/O contracts
 ├── lib/
-│   ├── api.ts              Fake API (localStorage-backed)
+│   ├── api.ts              Stable screen-facing API wrappers
 │   ├── mock-data.ts        Seed data
 │   ├── demo-stages.ts      Per-stage snapshot shaping
 │   ├── formula.ts          Scoring formula
@@ -136,11 +156,17 @@ src/
 │   ├── role-context.tsx
 │   ├── stage-context.tsx
 │   └── types.ts            Domain types
+├── server/
+│   ├── actions/            Server actions used by lib/api.ts
+│   ├── seed/               Stage seed functions
+│   ├── db.ts               Prisma singleton
+│   └── world.ts            DB mapping and persistence logic
 └── styles/                 globals.css + components.css + tokens.css
 
+prisma/                     Prisma schema + SQL migrations
 prototype/                  Historical static-HTML reference (will be removed)
 prototype-components/       Earlier JSX prototype (will be removed)
-scripts/                    audit-check.ts (sanity runner)
+scripts/                    DB setup/seed + audit-check sanity runner
 public/                     Static assets (the Daremaster video)
 ```
 

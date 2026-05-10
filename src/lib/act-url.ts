@@ -55,20 +55,29 @@ export function applyActFromUrl(): void {
   const stage = coerceStage(stageStr);
   const flags = rest.join(",").split(",").filter(Boolean);
 
-  resetState();
-  setDemoStage(stage);
-  // Mutation inside apiSetRole is synchronous; the Promise return only delays
-  // the resolved value, which we don't need here.
-  apiSetRole(role);
-  window.localStorage.setItem(ROLE_KEY, role);
+  void (async () => {
+    try {
+      resetState();
+      setDemoStage(stage);
+      window.localStorage.setItem(ROLE_KEY, role);
 
-  if (flags.includes("hype")) sendDaremasterSnapshot();
-  if (flags.includes("growth")) sendGrowthInsightSnapshot();
+      const res = await fetch(
+        `/api/seed?stage=${encodeURIComponent(stage)}&role=${encodeURIComponent(role)}`
+      );
+      if (!res.ok) throw new Error(`Seed endpoint returned ${res.status}`);
 
-  url.searchParams.delete("act");
-  const cleanSearch = url.searchParams.toString();
-  const cleanUrl =
-    url.pathname + (cleanSearch ? `?${cleanSearch}` : "") + url.hash;
-  window.history.replaceState({}, "", cleanUrl);
-  window.location.reload();
+      await apiSetRole(role);
+      if (flags.includes("hype")) await sendDaremasterSnapshot();
+      if (flags.includes("growth")) await sendGrowthInsightSnapshot();
+
+      url.searchParams.delete("act");
+      const cleanSearch = url.searchParams.toString();
+      const cleanUrl =
+        url.pathname + (cleanSearch ? `?${cleanSearch}` : "") + url.hash;
+      window.history.replaceState({}, "", cleanUrl);
+      window.location.reload();
+    } catch (err) {
+      console.error("[dyd] Failed to apply ?act= seed.", err);
+    }
+  })();
 }

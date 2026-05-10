@@ -1,30 +1,21 @@
-// DYD — Fake API layer
-// localStorage-backed. Every screen calls these functions; nothing reads
-// mock-data.ts directly. Mutations write to localStorage under "dyd:state:v1"
-// so the demo survives a refresh.
+// DYD runtime API.
 //
-// State is bootstrapped from a "demo stage" preset (see lib/demo-stages.ts).
-// The stage switcher in the top bar overwrites the snapshot atomically so the
-// demo can jump cleanly between scenes for the recording.
+// The public surface stays intentionally stable for the screens. Internally,
+// world state now lives in Postgres via server actions; only demo-stage/role
+// UI hints and formula tuning remain in localStorage.
 
-import {
-  agentSnapshots,
-  currentChallenge,
-  evidencePackets,
-  users,
-} from "./mock-data";
+import * as agentActions from "@/server/actions/agents";
+import * as auditActions from "@/server/actions/audit";
+import * as challengeActions from "@/server/actions/challenge";
+import * as evidenceActions from "@/server/actions/evidence";
+import * as feedActions from "@/server/actions/feed";
+import * as participantActions from "@/server/actions/participants";
 import { STAGE_NOW } from "./format";
-import {
-  buildSnapshot,
-  coerceStage,
-  type DemoStage,
-} from "./demo-stages";
-import { audit } from "@/agents/audit-assistant";
+import { coerceStage, type DemoStage } from "./demo-stages";
 import { design } from "@/agents/challenge-designer";
 import { generate as generateDaremasterFallback } from "@/agents/daremaster";
 import { extract } from "@/agents/insight-extractor";
 import type {
-  AuditFindings,
   ChallengeBrief,
   ChallengeDesignerInput,
   DaremasterPost,
@@ -41,48 +32,22 @@ import type {
   EvidenceDraft,
   AuditResult,
   AgentSnapshot,
-  GrowthAssetBundle,
   Notification,
   ReactionKind,
   User,
   Role,
 } from "./types";
 
-const STORAGE_KEY = "dyd:state:v1";
 const STAGE_KEY = "dyd:stage:v1";
 const DEFAULT_STAGE: DemoStage = "launch";
-const LATENCY = () => 150 + Math.floor(Math.random() * 150);
-
-interface MutableState {
-  participants: Participant[];
-  ranking: RankingEntry[];
-  feed: FeedPost[];
-  evidence: EvidenceSubmission[];
-  audits: Record<string, AuditResult>;
-  challenge: Challenge;
-  currentUserId: string;
-  notifications: Notification[];
-  /** Has the admin sent the latest audit snapshot to the Daremaster at Day 14? */
-  daremasterInsightSent?: boolean;
-  /** Has the admin sent the Growth Insight Extractor's bundle to the Daremaster? */
-  growthInsightSent?: boolean;
-}
-
-let state: MutableState | null = null;
-
-function clone<T>(v: T): T {
-  return typeof structuredClone === "function"
-    ? structuredClone(v)
-    : JSON.parse(JSON.stringify(v));
-}
 
 function readStage(): DemoStage {
   if (typeof window === "undefined") return DEFAULT_STAGE;
   try {
-    const raw = window.localStorage.getItem(STAGE_KEY);
-    return coerceStage(raw);
-  } catch {}
-  return DEFAULT_STAGE;
+    return coerceStage(window.localStorage.getItem(STAGE_KEY));
+  } catch {
+    return DEFAULT_STAGE;
+  }
 }
 
 function writeStage(stage: DemoStage) {
@@ -92,239 +57,87 @@ function writeStage(stage: DemoStage) {
   } catch {}
 }
 
-export function getDemoStage(): DemoStage {
-  return readStage();
-}
-
-/** Resets the world to the canonical snapshot for the given stage. */
-export function setDemoStage(stage: DemoStage): void {
-  const currentUserId = state?.currentUserId ?? "u-sofia";
-  state = buildSnapshot(stage, currentUserId);
-  writeStage(stage);
-  persist();
-}
-
-function hydrate(): MutableState {
-  if (state) return state;
-  if (typeof window !== "undefined") {
-    try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        state = JSON.parse(raw);
-        return state!;
-      }
-    } catch {}
-  }
-  state = buildSnapshot(readStage(), "u-sofia");
-  persist();
-  return state;
-}
-
-function persist() {
-  if (typeof window === "undefined" || !state) return;
+function broadcastStateChanged() {
+  if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    // Broadcast every mutation so subscribers (e.g. the Sidebar lock state)
-    // can refresh without waiting for a route change.
     window.dispatchEvent(new CustomEvent("dyd:state-changed"));
   } catch {}
 }
 
-function delay<T>(value: T): Promise<T> {
-  return new Promise((resolve) => setTimeout(() => resolve(clone(value)), LATENCY()));
+export function getDemoStage(): DemoStage {
+  return readStage();
 }
 
-function recomputeRanking(s: MutableState) {
-  const sorted = [...s.participants].sort(
-    (a, b) => b.selfReportedValue - a.selfReportedValue
-  );
-  sorted.forEach((p, idx) => (p.hypeRank = idx + 1));
-  const max = Math.max(1, sorted[0]?.selfReportedValue ?? 1);
-  const auditMap: Record<string, number | undefined> = {};
-  s.ranking.forEach((r) => (auditMap[r.id] = r.auditScore));
-  s.ranking = sorted.map((p) => ({
-    ...p,
-    hypeProgress: Math.round((p.selfReportedValue / max) * 100),
-    auditScore: auditMap[p.id],
-    movement: "flat" as const,
-  }));
+/** Records the active demo stage for UI formatting. The DB is seeded via /api/seed. */
+export function setDemoStage(stage: DemoStage): void {
+  writeStage(stage);
+  broadcastStateChanged();
 }
 
-// ── Reads ──────────────────────────────────────────────────────────────────
-export async function getChallenge(_id: string = "dyd-001"): Promise<Challenge> {
-  return delay(hydrate().challenge);
+// -- Reads ------------------------------------------------------------------
+
+export async function getChallenge(id: string = "dyd-001"): Promise<Challenge> {
+  return challengeActions.getChallenge(id);
 }
 
-export async function getParticipants(_challengeId: string = "dyd-001"): Promise<Participant[]> {
-  return delay(hydrate().participants);
+export async function getParticipants(challengeId: string = "dyd-001"): Promise<Participant[]> {
+  return participantActions.getParticipants(challengeId);
 }
 
-export async function getHypeRanking(_challengeId: string = "dyd-001"): Promise<RankingEntry[]> {
-  return delay(hydrate().ranking);
+export async function getHypeRanking(challengeId: string = "dyd-001"): Promise<RankingEntry[]> {
+  return participantActions.getHypeRanking(challengeId);
 }
 
-export async function getFeed(_challengeId: string = "dyd-001", _cursor?: string): Promise<FeedPage> {
-  const s = hydrate();
-  return delay({
-    posts: [...s.feed].sort(
-      (a, b) =>
-        Number(b.pinned ?? false) - Number(a.pinned ?? false) ||
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    ),
-    nextCursor: undefined,
-  });
+export async function getFeed(challengeId: string = "dyd-001", cursor?: string): Promise<FeedPage> {
+  return feedActions.getFeed(challengeId, cursor);
 }
 
 export async function getMySubmission(
-  _challengeId: string,
+  challengeId: string,
   userId: string
 ): Promise<EvidenceSubmission | null> {
-  const s = hydrate();
-  const p = s.participants.find((x) => x.userId === userId);
-  if (!p) return delay(null);
-  const ev = s.evidence.find((e) => e.participantId === p.id) ?? null;
-  return delay(ev);
+  return evidenceActions.getMySubmission(challengeId, userId);
 }
 
-export async function getAuditQueue(_challengeId: string = "dyd-001"): Promise<AuditResult[]> {
-  const s = hydrate();
-  return delay(Object.values(s.audits));
+export async function getAuditQueue(challengeId: string = "dyd-001"): Promise<AuditResult[]> {
+  return auditActions.getAuditQueue(challengeId);
 }
 
 export async function getAuditResult(participantId: string): Promise<AuditResult | null> {
-  const s = hydrate();
-  return delay(s.audits[participantId] ?? null);
+  return auditActions.getAuditResult(participantId);
 }
 
 export async function getAgents(): Promise<AgentSnapshot[]> {
-  return delay(agentSnapshots);
-}
-
-export async function getGrowthAssets(_challengeId: string = "dyd-001"): Promise<InsightBundle> {
-  // Run the Growth Insight Extractor live against the approved evidence
-  // corpus. Anyone whose audit ended up "approved" or "overridden" counts;
-  // the rest are rejections.
-  const s = hydrate();
-  const audits = Object.values(s.audits);
-  const approvedIds = new Set(
-    audits.filter((a) => a.adminStatus === "approved" || a.adminStatus === "overridden").map((a) => a.participantId)
-  );
-  const approvedPackets = Object.values(evidencePackets).filter((p) => approvedIds.has(p.participantId));
-  const rejectedCount = audits.filter((a) => a.adminStatus === "rejected").length;
-
-  // The admin no longer approves submissions individually — the audit's
-  // recommendation is the gate. Anything not flagged for manual review is
-  // valid corpus material for the extractor.
-  const packetsToUse = approvedPackets.length
-    ? approvedPackets
-    : Object.values(evidencePackets).filter((p) => {
-        const a = s.audits[p.participantId];
-        if (!a) return false;
-        return a.recommendation !== "Needs manual review";
-      });
-
-  // Try the live extractor; fall back to the deterministic agent on any error
-  // (no key, network, validation, etc.). Demos work without an API key.
-  if (typeof window !== "undefined" && packetsToUse.length > 0) {
-    try {
-      const res = await fetch("/api/agents/insight-extractor", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ approvedPackets: packetsToUse, rejectedCount }),
-      });
-      if (res.ok) {
-        return (await res.json()) as InsightBundle;
-      }
-    } catch {
-      // fall through to deterministic extract()
-    }
-  }
-
-  return delay(extract({ approvedPackets: packetsToUse, rejectedCount }));
+  return agentActions.getAgents();
 }
 
 export async function getCurrentUser(): Promise<User> {
-  const s = hydrate();
-  return delay(users[s.currentUserId] ?? users["u-sofia"]);
+  return challengeActions.getCurrentUser();
 }
 
 export async function setRole(role: Role): Promise<User> {
-  const s = hydrate();
-  const map: Record<Role, string> = {
-    participant: "u-sofia",   // Tomi
-    admin: "u-admin",         // Gabo
-    sponsor: "u-admin",       // legacy fallback — not exposed in the role switcher
-    spectator: "u-sofia",     // legacy fallback — not exposed in the role switcher
-  };
-  s.currentUserId = map[role] ?? "u-sofia";
-  persist();
-  return delay(users[s.currentUserId] ?? users["u-sofia"]);
+  return challengeActions.setRole(role);
 }
 
 export async function getNotifications(): Promise<Notification[]> {
-  const s = hydrate();
-  const stage = readStage();
-  // Rebuild per-role notifications on every read so role switches reflect
-  // immediately (snapshot was built at hydrate time with whichever role was
-  // active then, and may be stale).
-  const role: "admin" | "participant" = s.currentUserId === "u-admin" ? "admin" : "participant";
-  if (stage === "launch") return delay([]);
-  if (role === "admin" && stage === "completed") {
-    return delay([
-      {
-        id: "n-audit-ready",
-        title: "AI Audit Assistant ready for final assessments.",
-        body: "All submissions are in. Open the Admin Review page to confirm the final board.",
-        cta: "Open Admin Review",
-        href: "/admin",
-        unread: true,
-        createdAt: "2026-06-29T18:05:00-03:00",
-      },
-    ]);
-  }
-  return delay(s.notifications);
+  return challengeActions.getNotifications();
 }
 
-// ── Writes ─────────────────────────────────────────────────────────────────
-export async function register(_challengeId: string, userId: string): Promise<void> {
-  const s = hydrate();
-  const existing = s.participants.find((p) => p.userId === userId);
-  if (existing) {
-    existing.registered = true;
-  } else {
-    const u = users[userId];
-    if (u) {
-      s.participants.push({
-        id: `p-${userId}`,
-        userId,
-        name: u.name,
-        role: u.jobTitle,
-        avatarInitials: u.name.split(" ").map((n) => n[0]).slice(0, 2).join(""),
-        registered: true,
-        selfReportedValue: 0,
-        evidenceStatus: "not_submitted",
-        hypeRank: s.participants.length + 1,
-        badges: [],
-      });
-    }
-  }
-  recomputeRanking(s);
-  persist();
-  return delay(undefined);
+// -- Writes -----------------------------------------------------------------
+
+export async function register(challengeId: string, userId: string): Promise<void> {
+  await participantActions.register(challengeId, userId);
+  broadcastStateChanged();
 }
 
 export async function updateSelfReport(
-  _challengeId: string,
+  challengeId: string,
   userId: string,
   value: number
 ): Promise<Participant> {
-  const s = hydrate();
-  const p = s.participants.find((x) => x.userId === userId);
-  if (!p) throw new Error("Not registered");
-  p.selfReportedValue = Math.max(0, value);
-  recomputeRanking(s);
-  persist();
-  return delay(p);
+  const participant = await participantActions.updateSelfReport(challengeId, userId, value);
+  broadcastStateChanged();
+  return participant;
 }
 
 export async function submitEvidence(
@@ -332,202 +145,92 @@ export async function submitEvidence(
   userId: string,
   draft: EvidenceDraft
 ): Promise<EvidenceSubmission> {
-  const s = hydrate();
-  const p = s.participants.find((x) => x.userId === userId);
-  if (!p) throw new Error("Not registered");
-  const submission: EvidenceSubmission = {
-    id: `ev-${userId}-${Date.now()}`,
-    participantId: p.id,
-    challengeId,
-    submittedAt: new Date().toISOString(),
-    ...draft,
-  };
-  s.evidence = s.evidence.filter((e) => e.participantId !== p.id);
-  s.evidence.push(submission);
-  p.evidenceStatus = "uploaded";
-  p.selfReportedValue += 1;
-  recomputeRanking(s);
-  persist();
-  return delay(submission);
+  const submission = await evidenceActions.submitEvidence(challengeId, userId, draft);
+  broadcastStateChanged();
+  return submission;
 }
 
-export async function postFeedComment(_challengeId: string, content: string): Promise<FeedPost> {
-  const s = hydrate();
-  const u = users[s.currentUserId];
-  // Use the active stage's anchored "now" so the relative timestamp ("3m ago")
-  // reads sensibly against the rest of the feed.
-  const stage = readStage();
-  const stageNow = new Date(STAGE_NOW[stage]).getTime();
-  const post: FeedPost = {
-    id: `fp-${Date.now()}`,
-    author: u?.name ?? "Anonymous",
-    authorRole: u?.jobTitle,
-    authorType:
-      u?.role === "admin" ? "admin" :
-      u?.role === "participant" ? "participant" : "employee",
-    content,
-    createdAt: new Date(stageNow).toISOString(),
-    reactions: { fire: 0, clap: 0, rocket: 0, eyes: 0, trophy: 0 },
-  };
-  s.feed = [post, ...s.feed];
-  persist();
-  return delay(post);
+export async function postFeedComment(challengeId: string, content: string): Promise<FeedPost> {
+  const post = await feedActions.postFeedComment(challengeId, content);
+  broadcastStateChanged();
+  return post;
 }
 
 export async function react(postId: string, kind: ReactionKind): Promise<FeedPost> {
-  const s = hydrate();
-  const p = s.feed.find((x) => x.id === postId);
-  if (!p) throw new Error("Not found");
-  p.reactions[kind] = (p.reactions[kind] ?? 0) + 1;
-  persist();
-  return delay(p);
+  const post = await feedActions.react(postId, kind);
+  broadcastStateChanged();
+  return post;
 }
 
 export async function adminApprove(participantId: string): Promise<AuditResult> {
-  const s = hydrate();
-  const a = s.audits[participantId];
-  if (!a) throw new Error("Not in queue");
-  a.adminStatus = "approved";
-  const part = s.participants.find((p) => p.id === participantId);
-  if (part) part.evidenceStatus = "approved";
-  persist();
-  return delay(a);
+  const result = await auditActions.adminApprove(participantId);
+  broadcastStateChanged();
+  return result;
 }
 
 export async function adminReject(participantId: string, reason: string): Promise<AuditResult> {
-  const s = hydrate();
-  const a = s.audits[participantId];
-  if (!a) throw new Error("Not in queue");
-  a.adminStatus = "rejected";
-  a.flags = [...a.flags, `Admin reason: ${reason}`];
-  const part = s.participants.find((p) => p.id === participantId);
-  if (part) part.evidenceStatus = "rejected";
-  persist();
-  return delay(a);
+  const result = await auditActions.adminReject(participantId, reason);
+  broadcastStateChanged();
+  return result;
 }
 
 export async function adminOverrideScore(participantId: string, score: number): Promise<AuditResult> {
-  const s = hydrate();
-  const a = s.audits[participantId];
-  if (!a) throw new Error("Not in queue");
-  a.overrideScore = Math.max(0, Math.min(10, Math.round(score * 10) / 10));
-  a.adminStatus = "overridden";
-  persist();
-  return delay(a);
+  const result = await auditActions.adminOverrideScore(participantId, score);
+  broadcastStateChanged();
+  return result;
 }
 
-export async function adminIssueStrike(participantId: string, _reason: string): Promise<Participant> {
-  const s = hydrate();
-  const p = s.participants.find((x) => x.id === participantId);
-  if (!p) throw new Error("Not found");
-  p.strikeIssued = true;
-  persist();
-  return delay(p);
+export async function adminIssueStrike(participantId: string, reason: string): Promise<Participant> {
+  const participant = await participantActions.adminIssueStrike(participantId, reason);
+  broadcastStateChanged();
+  return participant;
 }
 
 export async function adminDeclareWinner(participantId: string): Promise<Challenge> {
-  const s = hydrate();
-  s.challenge.winnerId = participantId;
-  s.challenge.status = "completed";
-  const p = s.participants.find((x) => x.id === participantId);
-  if (p) p.finalRank = 1;
-  persist();
-  return delay(s.challenge);
+  const challenge = await challengeActions.adminDeclareWinner(participantId);
+  broadcastStateChanged();
+  return challenge;
 }
 
 export function resetState(): void {
   if (typeof window === "undefined") return;
-  window.localStorage.removeItem(STORAGE_KEY);
-  // Also drop any tuned formula (qualityWeight, rubricWeights, targetItems) so a
-  // fresh act= URL always lands on default scoring.
-  window.localStorage.removeItem("dyd:formula:v1");
-  // Reset always returns the world to Launch (the pristine pre-registration scene).
-  window.localStorage.setItem(STAGE_KEY, "launch");
-  state = null;
+  try {
+    window.localStorage.removeItem("dyd:formula:v1");
+    window.localStorage.setItem(STAGE_KEY, DEFAULT_STAGE);
+  } catch {}
 }
 
-// ── Daremaster insight handoff ─────────────────────────────────────────────
-//
-// At Day 14, the admin can "Send snapshot to Daremaster" from the Admin
-// Review page. That flips a flag so the next Daremaster generation produces
-// an insightful post (about Charlie being the dark horse) instead of a
-// trivial one. The Agents page reads this flag to decide which variant to
-// surface.
-
 export async function sendDaremasterSnapshot(): Promise<void> {
-  const s = hydrate();
-  s.daremasterInsightSent = true;
-  persist();
-  return delay(undefined);
+  await agentActions.sendDaremasterSnapshot();
+  broadcastStateChanged();
 }
 
 export async function getDaremasterInsightSent(): Promise<boolean> {
-  const s = hydrate();
-  return delay(!!s.daremasterInsightSent);
+  return agentActions.getDaremasterInsightSent();
 }
 
 export async function sendGrowthInsightSnapshot(): Promise<void> {
-  const s = hydrate();
-  s.growthInsightSent = true;
-  persist();
-  return delay(undefined);
+  await agentActions.sendGrowthInsightSnapshot();
+  broadcastStateChanged();
 }
 
 export async function getGrowthInsightSent(): Promise<boolean> {
-  const s = hydrate();
-  return delay(!!s.growthInsightSent);
+  return agentActions.getGrowthInsightSent();
 }
 
-/** Re-seeds the world from the active stage's preset, preserving the role. */
+/** Re-seeds are now handled by /api/seed; this keeps old callers stable. */
 export function reloadFromStage(): void {
   setDemoStage(readStage());
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Agent invocations
-//
-// These helpers let admin-only UI on /agents trigger each agent live. They
-// adapt the agent's pure I/O to the API layer (look up state, persist output
-// to the world, return the result for the UI to render).
-// ─────────────────────────────────────────────────────────────────────────────
+// -- Agent invocations -------------------------------------------------------
 
-/** Build a Daremaster snapshot from the current world state. */
 export async function buildDaremasterSnapshot(): Promise<DaremasterSnapshot> {
-  const s = hydrate();
-  const now = Date.now();
-  const days = (iso: string) =>
-    Math.round((new Date(iso).getTime() - now) / 86_400_000);
-  return clone({
-    challenge: {
-      id: s.challenge.id,
-      title: s.challenge.title,
-      registrationDeadline: s.challenge.registrationDeadline,
-      submissionDeadline: s.challenge.submissionDeadline,
-      status: s.challenge.status,
-    },
-    ranking: s.ranking,
-    participantCount: s.participants.length,
-    registeredCount: s.participants.filter((p) => p.registered).length,
-    daysToRegistrationDeadline: days(s.challenge.registrationDeadline),
-    daysToSubmissionDeadline: days(s.challenge.submissionDeadline),
-  });
+  return agentActions.buildDaremasterSnapshot();
 }
 
-// ─── Daremaster post generation (live + deterministic fallback) ────────────
-//
-// `generateDaremasterPost` is the screen-facing entry point. It:
-//   1. Builds a snapshot (with audit enrichment for non-trivial modes).
-//   2. Calls the live route at /api/agents/daremaster.
-//   3. Returns the validated post on 2xx.
-//   4. Falls back to a deterministic post (template trigger + scripted
-//      content) if the route is unavailable, fails, or returns invalid data.
-//
-// Trivial mode never hits the live route — the recorded demo's pre-handoff
-// beat is intentionally generic, and we don't want LLM output to drift into
-// premature dark-horse commentary before the audit handoff.
-
 const TRIVIAL_VARIANTS: string[] = [
-  "The Hype Ranking is heating up. Keep going — every testimonial counts.",
+  "The Hype Ranking is heating up. Keep going - every testimonial counts.",
   "Numbers are climbing. Stay focused, the deadline is approaching.",
   "Daredevils are moving fast. Don't fall behind.",
 ];
@@ -545,33 +248,32 @@ export async function generateDaremasterPost(
   mode: DaremasterMode,
   opts: GenerateDaremasterOptions = {}
 ): Promise<DaremasterPost> {
-  const snapshot = await buildDaremasterSnapshot();
-  const enriched = mode === "trivial" ? snapshot : await enrichSnapshotWithAudit(snapshot);
+  const snapshot =
+    mode === "trivial"
+      ? await agentActions.buildDaremasterSnapshot()
+      : await agentActions.buildDaremasterSnapshotWithAudit();
 
-  // Trivial mode: deterministic only, to keep the recorded pre-handoff beat
-  // intact regardless of API key / model behavior.
   if (mode === "trivial") {
-    return deterministicDaremasterPost(enriched, "trivial", opts.trivialIdx ?? 0);
+    return deterministicDaremasterPost(snapshot, "trivial", opts.trivialIdx ?? 0);
   }
 
-  // Live attempt.
   if (typeof window !== "undefined") {
     try {
       const res = await fetch("/api/agents/daremaster", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ snapshot: enriched, mode }),
+        body: JSON.stringify({ snapshot, mode }),
       });
       if (res.ok) {
         const live = (await res.json()) as DaremasterPost;
         return { ...live, reactions: { ...FRESH_REACTIONS } };
       }
     } catch {
-      // Fall through to deterministic.
+      // Fall through to deterministic fallback.
     }
   }
 
-  return deterministicDaremasterPost(enriched, mode, opts.trivialIdx ?? 0);
+  return deterministicDaremasterPost(snapshot, mode, opts.trivialIdx ?? 0);
 }
 
 async function deterministicDaremasterPost(
@@ -587,125 +289,77 @@ async function deterministicDaremasterPost(
   return { ...base, content, reactions: { ...FRESH_REACTIONS } };
 }
 
-/**
- * Stitch the audit's qualityScore onto each ranking entry so the model has
- * signal about quality vs. volume tension. We never pass the formula
- * itself — the model must not reason about (or expose) the formula math.
- */
-async function enrichSnapshotWithAudit(
-  snapshot: DaremasterSnapshot
-): Promise<DaremasterSnapshot> {
-  const s = hydrate();
-  const ranking = snapshot.ranking.map((r) => {
-    const a = s.audits[r.id];
-    if (!a) return r;
-    return { ...r, auditScore: a.qualityScore };
-  });
-  return { ...snapshot, ranking };
-}
-
-/** Deterministic Day-14 "Charlie's the dark horse" copy, with no scores. */
 async function buildInsightPostContent(): Promise<string> {
-  const s = hydrate();
-  const bobLead = s.participants.find((p) => p.id === "p-bob")?.selfReportedValue ?? 0;
-  const charlieValidated = s.audits["p-charlie"]?.validatedItems ?? 0;
+  const facts = await agentActions.getDaremasterFallbackFacts();
   return (
-    `Charlie is the dark horse. ${charlieValidated} clean testimonials, perfect permissions, every story specific. ` +
-    `Bob leads the Hype Ranking with ${bobLead} self-reported — but the audit weighs quality just as hard, ` +
+    `Charlie is the dark horse. ${facts.charlieValidated} clean testimonials, perfect permissions, every story specific. ` +
+    `Bob leads the Hype Ranking with ${facts.bobLead} self-reported - but the audit weighs quality just as hard, ` +
     `and on substance both Patrick and Charlie are ahead of him. Quality is rewriting the leaderboard.`
   );
 }
 
-/** Deterministic completed-stage winner announcement, with no scores. */
 async function buildWinnerPostContent(): Promise<string> {
-  const s = hydrate();
-  const bobLead = s.participants.find((p) => p.id === "p-bob")?.selfReportedValue ?? 0;
-  const patValidated = s.audits["p-patrick"]?.validatedItems ?? 0;
+  const facts = await agentActions.getDaremasterFallbackFacts();
   return (
-    `Patrick wins DYD #001. ${patValidated} polished testimonials, every story validated, business impact named in every clip. ` +
-    `Bob's ${bobLead}-strong Hype lead held for two weeks, but the audit's quality blend tipped the board. ` +
-    `Marketing has already turned the corpus into reusable assets — quotes, case studies, sales snippets, LinkedIn drafts.`
+    `Patrick wins DYD #001. ${facts.patrickValidated} polished testimonials, every story validated, business impact named in every clip. ` +
+    `Bob's ${facts.bobLead}-strong Hype lead held for two weeks, but the audit's quality blend tipped the board. ` +
+    `Marketing has already turned the corpus into reusable assets - quotes, case studies, sales snippets, LinkedIn drafts.`
   );
 }
 
-/** Persist a Daremaster post to the feed and return the resulting FeedPost. */
 export async function postDaremasterMessage(
   post: DaremasterPost,
   pinned: boolean = false,
   cta?: FeedPost["cta"]
 ): Promise<FeedPost> {
-  const s = hydrate();
-  const stage = readStage();
-  const stageNow = new Date(STAGE_NOW[stage]).getTime();
-  const fp: FeedPost = {
-    id: `fp-bot-${Date.now()}`,
-    author: "Daremaster",
-    authorRole: "DYD Bot",
-    authorType: "bot",
-    content: post.content,
-    createdAt: new Date(stageNow).toISOString(),
-    reactions: post.reactions,
-    pinned,
-    cta,
-  };
-  // If we're pinning, demote any other pinned post so only one stays at the top.
-  if (pinned) s.feed = s.feed.map((p) => (p.pinned ? { ...p, pinned: false } : p));
-  s.feed = [fp, ...s.feed];
-  persist();
-  return delay(fp);
+  const feedPost = await feedActions.postDaremasterMessage(post, pinned, cta);
+  broadcastStateChanged();
+  return feedPost;
 }
 
-/** Toggle a feed post's pinned flag. Demotes any other pinned post when pinning. */
 export async function setFeedPostPinned(postId: string, pinned: boolean): Promise<void> {
-  const s = hydrate();
-  s.feed = s.feed.map((p) => {
-    if (p.id === postId) return { ...p, pinned };
-    if (pinned && p.pinned) return { ...p, pinned: false };
-    return p;
-  });
-  persist();
-  return delay(undefined);
+  await feedActions.setFeedPostPinned(postId, pinned);
+  broadcastStateChanged();
 }
 
-/**
- * Re-run the AI Audit Assistant for one participant against the canonical
- * evidence packet. Updates the audit cache in-place — the admin sees a fresh
- * AuditResult on the /admin page after this returns.
- */
 export async function runAudit(participantId: string): Promise<AuditResult | null> {
-  const packet = evidencePackets[participantId];
-  if (!packet) return delay(null);
-  const findings = audit({ packet, contract: currentChallenge.auditContract });
-  const s = hydrate();
-  s.audits[participantId] = findings;
-  persist();
-  return delay(findings);
+  const result = await auditActions.runAudit(participantId);
+  broadcastStateChanged();
+  return result;
 }
 
-/**
- * Lazy-load a fresher human-readable audit trace from the LLM. Returns null
- * if no key, no audit, the network call fails, or the model output is
- * invalid — callers must keep showing the deterministic `audit.trace` in
- * that case. Deterministic scoring is unchanged either way.
- */
+export async function getGrowthAssets(_challengeId: string = "dyd-001"): Promise<InsightBundle> {
+  const input = await agentActions.getInsightInput();
+
+  if (typeof window !== "undefined" && input.approvedPackets.length > 0) {
+    try {
+      const res = await fetch("/api/agents/insight-extractor", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(input),
+      });
+      if (res.ok) {
+        return (await res.json()) as InsightBundle;
+      }
+    } catch {
+      // Fall through to deterministic extract().
+    }
+  }
+
+  return extract(input);
+}
+
 export async function generateAuditTrace(
   participantId: string
 ): Promise<string[] | null> {
   if (typeof window === "undefined") return null;
-  const packet = evidencePackets[participantId];
-  if (!packet) return null;
-  const s = hydrate();
-  const findings = s.audits[participantId] as AuditFindings | undefined;
-  if (!findings) return null;
+  const input = await agentActions.getAuditTraceInput(participantId);
+  if (!input) return null;
   try {
     const res = await fetch("/api/agents/audit-assistant/trace", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        packet,
-        contract: currentChallenge.auditContract,
-        findings,
-      }),
+      body: JSON.stringify(input),
     });
     if (!res.ok) return null;
     const data = (await res.json()) as { trace?: unknown };
@@ -717,11 +371,6 @@ export async function generateAuditTrace(
   }
 }
 
-/**
- * Generate a ChallengeBrief from a one-line idea. Tries the live route first;
- * falls back to the deterministic template-matched designer when the route
- * is unavailable or returns invalid output.
- */
 export async function designChallenge(
   input: ChallengeDesignerInput
 ): Promise<ChallengeBrief> {
@@ -736,8 +385,10 @@ export async function designChallenge(
         return (await res.json()) as ChallengeBrief;
       }
     } catch {
-      // fall through to deterministic design()
+      // Fall through to deterministic design().
     }
   }
   return design(input);
 }
+
+export { STAGE_NOW };

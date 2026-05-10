@@ -1,16 +1,61 @@
-// Wrapper tests for src/lib/api.ts.
-//
-// These exercise the client-side fallback contracts without booting Next.js:
-//   - generateDaremasterPost: trivial mode never fetches; insight/winner
-//     fetch the route, fall back to deterministic content on non-ok / throw.
-//   - The deterministic fallback content must be score-free.
-//
-// Each test sets up its own minimal `window` with localStorage so api.ts can
-// read/write `dyd:state:v1` etc. We `vi.resetModules()` between tests so the
-// module-scoped `state` cache inside api.ts doesn't leak.
-
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { containsForbiddenScoreLanguage } from "@/app/api/agents/_shared/validation";
+import type { DaremasterSnapshot, EvidencePacket } from "@/agents/types";
+
+const mocks = vi.hoisted(() => ({
+  agents: {
+    getAgents: vi.fn(),
+    buildDaremasterSnapshot: vi.fn(),
+    buildDaremasterSnapshotWithAudit: vi.fn(),
+    getDaremasterFallbackFacts: vi.fn(),
+    getInsightInput: vi.fn(),
+    getAuditTraceInput: vi.fn(),
+    sendDaremasterSnapshot: vi.fn(),
+    getDaremasterInsightSent: vi.fn(),
+    sendGrowthInsightSnapshot: vi.fn(),
+    getGrowthInsightSent: vi.fn(),
+  },
+  audit: {
+    getAuditQueue: vi.fn(),
+    getAuditResult: vi.fn(),
+    adminApprove: vi.fn(),
+    adminReject: vi.fn(),
+    adminOverrideScore: vi.fn(),
+    runAudit: vi.fn(),
+  },
+  challenge: {
+    getChallenge: vi.fn(),
+    getCurrentUser: vi.fn(),
+    setRole: vi.fn(),
+    getNotifications: vi.fn(),
+    adminDeclareWinner: vi.fn(),
+  },
+  evidence: {
+    getMySubmission: vi.fn(),
+    submitEvidence: vi.fn(),
+  },
+  feed: {
+    getFeed: vi.fn(),
+    postFeedComment: vi.fn(),
+    react: vi.fn(),
+    postDaremasterMessage: vi.fn(),
+    setFeedPostPinned: vi.fn(),
+  },
+  participants: {
+    getParticipants: vi.fn(),
+    getHypeRanking: vi.fn(),
+    register: vi.fn(),
+    updateSelfReport: vi.fn(),
+    adminIssueStrike: vi.fn(),
+  },
+}));
+
+vi.mock("@/server/actions/agents", () => mocks.agents);
+vi.mock("@/server/actions/audit", () => mocks.audit);
+vi.mock("@/server/actions/challenge", () => mocks.challenge);
+vi.mock("@/server/actions/evidence", () => mocks.evidence);
+vi.mock("@/server/actions/feed", () => mocks.feed);
+vi.mock("@/server/actions/participants", () => mocks.participants);
 
 interface MemoryStorage {
   getItem(k: string): string | null;
@@ -25,6 +70,98 @@ interface WindowStub {
   addEventListener(): void;
   removeEventListener(): void;
 }
+
+const baseSnapshot: DaremasterSnapshot = {
+  challenge: {
+    id: "dyd-001",
+    title: "The Testimonial Hunt",
+    registrationDeadline: "2026-05-18T23:59:00.000Z",
+    submissionDeadline: "2026-06-29T23:59:00.000Z",
+    status: "review",
+  },
+  ranking: [
+    {
+      id: "p-bob",
+      userId: "u-bob",
+      name: "Bob Martinez",
+      role: "Account Executive",
+      avatarInitials: "BM",
+      registered: true,
+      selfReportedValue: 13,
+      evidenceStatus: "uploaded",
+      hypeRank: 1,
+      badges: ["On fire"],
+      hypeProgress: 100,
+      movement: "up",
+    },
+    {
+      id: "p-charlie",
+      userId: "u-charlie",
+      name: "Charlie Okonkwo",
+      role: "Engineering Manager",
+      avatarInitials: "CO",
+      registered: true,
+      selfReportedValue: 6,
+      evidenceStatus: "approved",
+      hypeRank: 2,
+      badges: ["Dark horse"],
+      hypeProgress: 46,
+      auditScore: 88,
+      movement: "up",
+    },
+  ],
+  participantCount: 12,
+  registeredCount: 8,
+  daysToRegistrationDeadline: 8,
+  daysToSubmissionDeadline: 50,
+};
+
+const approvedPacket: EvidencePacket = {
+  participantId: "p-patrick",
+  declaredMetric: 1,
+  items: [
+    {
+      id: "item-1",
+      clientName: "Marcus Lee",
+      clientCompany: "Wells Fargo",
+      clientRole: "VP Engineering",
+      lengthSeconds: 110,
+      hasPermission: true,
+      hasBusinessImpact: true,
+      hasMetric: true,
+      snippet: "Lending platform shipped two quarters ahead of plan.",
+      impactSummary: "Lending platform shipped two quarters ahead of plan and unlocked measurable revenue.",
+    },
+  ],
+};
+
+const liveTraceInput = {
+  packet: approvedPacket,
+  contract: {
+    challengeId: "dyd-001",
+    name: "The Testimonial Hunt",
+    primaryMetric: { key: "testimonial_count", label: "Number of testimonials", type: "number", higherIsBetter: true },
+    evidence: { acceptedTypes: ["video"], requiredFields: ["clientName"] },
+    auditMode: "ai_assisted_human_approved",
+    rubric: [{ key: "clarity", label: "Clarity", weight: 100 }],
+    redFlags: [],
+    finalScoreFormula: "validated_metric * quality_multiplier",
+    finalDecisionOwner: "admins",
+  },
+  findings: {
+    participantId: "p-patrick",
+    declaredMetric: 1,
+    validatedItems: 1,
+    rejectedItems: 0,
+    qualityScore: 95,
+    suggestedFinalScore: 9.5,
+    flags: [],
+    recommendation: "Approve",
+    adminStatus: "pending",
+    rubricBreakdown: [{ key: "clarity", label: "Clarity", score: 5, max: 5 }],
+    trace: ["Deterministic trace"],
+  },
+};
 
 function makeWindow(): WindowStub {
   const map = new Map<string, string>();
@@ -49,6 +186,21 @@ beforeEach(() => {
   originalFetch = globalThis.fetch;
   (globalThis as { window?: unknown }).window = makeWindow();
   vi.resetModules();
+  vi.clearAllMocks();
+  mocks.agents.buildDaremasterSnapshot.mockResolvedValue(baseSnapshot);
+  mocks.agents.buildDaremasterSnapshotWithAudit.mockResolvedValue(baseSnapshot);
+  mocks.agents.getDaremasterFallbackFacts.mockResolvedValue({
+    bobLead: 13,
+    charlieValidated: 6,
+    patrickValidated: 9,
+  });
+  mocks.agents.getInsightInput.mockResolvedValue({
+    approvedPackets: [approvedPacket],
+    rejectedCount: 1,
+  });
+  mocks.agents.getAuditTraceInput.mockImplementation(async (participantId: string) =>
+    participantId === "p-patrick" ? liveTraceInput : null
+  );
 });
 
 afterEach(() => {
@@ -75,6 +227,7 @@ function okJson(body: unknown): Response {
     headers: { "content-type": "application/json" },
   });
 }
+
 function nonOk(status: number): Response {
   return new Response(JSON.stringify({ error: "x" }), {
     status,
@@ -82,13 +235,12 @@ function nonOk(status: number): Response {
   });
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-
 describe("buildDaremasterSnapshot", () => {
   it("returns the current challenge / ranking / count / deadline shape", async () => {
     const api = await importApi();
     api.setDemoStage("day_14");
     const snap = await api.buildDaremasterSnapshot();
+    expect(mocks.agents.buildDaremasterSnapshot).toHaveBeenCalledOnce();
     expect(snap.challenge.id).toBe("dyd-001");
     expect(snap.challenge.title.length).toBeGreaterThan(0);
     expect(Array.isArray(snap.ranking)).toBe(true);
@@ -100,9 +252,7 @@ describe("buildDaremasterSnapshot", () => {
   });
 });
 
-// ────────────────────────────────────────────────────────────────────────────
-
-describe("generateDaremasterPost — trivial mode", () => {
+describe("generateDaremasterPost - trivial mode", () => {
   it("never calls fetch and rotates deterministic content", async () => {
     const fetchSpy = vi.fn();
     globalThis.fetch = fetchSpy as unknown as typeof globalThis.fetch;
@@ -113,6 +263,7 @@ describe("generateDaremasterPost — trivial mode", () => {
     const b = await api.generateDaremasterPost("trivial", { trivialIdx: 1 });
 
     expect(fetchSpy).not.toHaveBeenCalled();
+    expect(mocks.agents.buildDaremasterSnapshot).toHaveBeenCalledTimes(2);
     expect(a.reactions).toEqual({ fire: 0, clap: 0, rocket: 0, eyes: 0, trophy: 0 });
     expect(b.reactions).toEqual({ fire: 0, clap: 0, rocket: 0, eyes: 0, trophy: 0 });
     expect(a.content).not.toEqual(b.content);
@@ -121,9 +272,7 @@ describe("generateDaremasterPost — trivial mode", () => {
   });
 });
 
-// ────────────────────────────────────────────────────────────────────────────
-
-describe("generateDaremasterPost — insight mode", () => {
+describe("generateDaremasterPost - insight mode", () => {
   it("uses live route when response is ok and zero-fills reactions", async () => {
     const livePost = {
       trigger: "quality_threat",
@@ -134,7 +283,6 @@ describe("generateDaremasterPost — insight mode", () => {
       expect(url).toBe("/api/agents/daremaster");
       const body = JSON.parse((init?.body as string) ?? "{}");
       expect(body.mode).toBe("insight");
-      // The wrapper is expected to enrich ranking[*].auditScore for non-trivial modes.
       const audited = body.snapshot.ranking.filter(
         (r: { auditScore?: number }) => typeof r.auditScore === "number"
       );
@@ -146,6 +294,7 @@ describe("generateDaremasterPost — insight mode", () => {
 
     const post = await api.generateDaremasterPost("insight");
     expect(fetchSpy).toHaveBeenCalledOnce();
+    expect(mocks.agents.buildDaremasterSnapshotWithAudit).toHaveBeenCalledOnce();
     expect(post.content).toBe(livePost.content);
     expect(post.trigger).toBe("quality_threat");
     expect(post.reactions).toEqual({ fire: 0, clap: 0, rocket: 0, eyes: 0, trophy: 0 });
@@ -176,9 +325,7 @@ describe("generateDaremasterPost — insight mode", () => {
   });
 });
 
-// ────────────────────────────────────────────────────────────────────────────
-
-describe("generateDaremasterPost — winner mode", () => {
+describe("generateDaremasterPost - winner mode", () => {
   it("falls back with Patrick winner + growth-asset framing on non-ok", async () => {
     mockFetch(async () => nonOk(502));
     const api = await importApi();
@@ -187,15 +334,10 @@ describe("generateDaremasterPost — winner mode", () => {
     const post = await api.generateDaremasterPost("winner");
     expect(post.reactions).toEqual({ fire: 0, clap: 0, rocket: 0, eyes: 0, trophy: 0 });
     expect(post.content).toContain("Patrick");
-    // The deterministic winner script frames the corpus payoff explicitly.
     expect(post.content.toLowerCase()).toContain("reusable assets");
     expect(containsForbiddenScoreLanguage(post.content)).toBe(false);
   });
 });
-
-// ────────────────────────────────────────────────────────────────────────────
-// getGrowthAssets
-// ────────────────────────────────────────────────────────────────────────────
 
 describe("getGrowthAssets", () => {
   it("uses live route when response is ok", async () => {
@@ -210,9 +352,7 @@ describe("getGrowthAssets", () => {
         snippets: 1,
         linkedinPosts: 1,
       },
-      topQuotes: [
-        { quote: "live-quote-marker", client: "L", company: "L Co" },
-      ],
+      topQuotes: [{ quote: "live-quote-marker", client: "L", company: "L Co" }],
       caseStudies: [{ title: "Live", summary: "Live summary", client: "L Co" }],
       snippets: [{ tag: "sales", text: "Live snippet text" }],
       linkedinPosts: [{ title: "Live draft", body: "Live body text." }],
@@ -230,7 +370,7 @@ describe("getGrowthAssets", () => {
 
     const out = await api.getGrowthAssets("dyd-001");
     expect(fetchSpy).toHaveBeenCalledOnce();
-    // Live marker survives intact — proves we did not fall back.
+    expect(mocks.agents.getInsightInput).toHaveBeenCalledOnce();
     expect(out.topQuotes[0].quote).toBe("live-quote-marker");
     expect(out.generatedAt).toBe("2026-05-09T00:00:00.000Z");
   });
@@ -244,7 +384,6 @@ describe("getGrowthAssets", () => {
     expect(out.challengeId).toBe("dyd-001");
     expect(typeof out.generatedAt).toBe("string");
     expect(out.totals).toBeDefined();
-    // Deterministic fallback never invents the live marker.
     expect(out.topQuotes.find((q) => q.quote === "live-quote-marker")).toBeUndefined();
   });
 
@@ -261,14 +400,10 @@ describe("getGrowthAssets", () => {
   });
 });
 
-// ────────────────────────────────────────────────────────────────────────────
-// designChallenge
-// ────────────────────────────────────────────────────────────────────────────
-
 describe("designChallenge", () => {
   it("uses live route when response is ok", async () => {
     const liveBrief = {
-      title: "DYD #002 — Live Brief Marker",
+      title: "DYD #002 - Live Brief Marker",
       subtitle: "Subtitle from the route.",
       description: "Description from the route, three sentences. Live marker. Done.",
       growthObjective: "Live growth objective.",
@@ -311,7 +446,7 @@ describe("designChallenge", () => {
     const api = await importApi();
     const brief = await api.designChallenge({ prompt: "collect testimonials from strategic accounts" });
     expect(fetchSpy).toHaveBeenCalledOnce();
-    expect(brief.title).toBe("DYD #002 — Live Brief Marker");
+    expect(brief.title).toBe("DYD #002 - Live Brief Marker");
   });
 
   it("falls back to deterministic designer on non-ok route response", async () => {
@@ -322,8 +457,7 @@ describe("designChallenge", () => {
     expect(Array.isArray(brief.rules)).toBe(true);
     expect(brief.auditContract).toBeDefined();
     expect(brief.auditContract.finalDecisionOwner).toBe("admins");
-    // Deterministic fallback never produces the live marker.
-    expect(brief.title).not.toBe("DYD #002 — Live Brief Marker");
+    expect(brief.title).not.toBe("DYD #002 - Live Brief Marker");
   });
 
   it("falls back to deterministic designer when fetch throws", async () => {
@@ -347,18 +481,14 @@ describe("designChallenge", () => {
   });
 });
 
-// ────────────────────────────────────────────────────────────────────────────
-// generateAuditTrace
-// ────────────────────────────────────────────────────────────────────────────
-
 describe("generateAuditTrace", () => {
   it("returns null when window is absent", async () => {
-    // Override the beforeEach window stub with no window.
     delete (globalThis as { window?: unknown }).window;
     vi.resetModules();
     const api = await importApi();
     const out = await api.generateAuditTrace("p-patrick");
     expect(out).toBeNull();
+    expect(mocks.agents.getAuditTraceInput).not.toHaveBeenCalled();
   });
 
   it("returns null for an unknown participantId", async () => {
@@ -372,10 +502,10 @@ describe("generateAuditTrace", () => {
   });
 
   it("returns null when no audit exists for the participant", async () => {
+    mocks.agents.getAuditTraceInput.mockResolvedValueOnce(null);
     const fetchSpy = vi.fn();
     globalThis.fetch = fetchSpy as unknown as typeof globalThis.fetch;
     const api = await importApi();
-    // Launch stage builds an empty audits map for all participants.
     api.setDemoStage("launch");
     const out = await api.generateAuditTrace("p-patrick");
     expect(out).toBeNull();
@@ -412,13 +542,11 @@ describe("generateAuditTrace", () => {
   });
 
   it("returns null when route response is missing { trace } or has wrong shape", async () => {
-    // Arity 1: object lacking the trace key.
     mockFetch(async () => okJson({ data: ["a", "b", "c"] }));
     let api = await importApi();
     api.setDemoStage("completed");
     expect(await api.generateAuditTrace("p-patrick")).toBeNull();
 
-    // Arity 2: trace is present but not an array of strings.
     vi.resetModules();
     (globalThis as { window?: unknown }).window = makeWindow();
     mockFetch(async () => okJson({ trace: [1, 2, 3] }));

@@ -1,185 +1,121 @@
-# DYD — Architecture
+# DYD - Architecture
 
-Code map and the **mock-vs-real boundary** for every subsystem. If you're planning Step 2, this is the reference.
-
----
+Code map and current mock-vs-real boundaries.
 
 ## Stack
 
-- **Next.js 14** (app router) — `next.config.mjs`, `src/app/*`
-- **TypeScript** — strict mode, `tsconfig.json`
-- **React 18** — all components are `"use client"` (no server components)
-- **Plain CSS** — `tokens.css` + `components.css` + `globals.css`. Tailwind is in `package.json` and `tailwind.config.ts` exists, but **utility classes are not used in the codebase**. Treat the styling as bespoke CSS classes.
-- **localStorage** — the only persistence. There is no backend, no DB, no API server.
-- **No auth** — accounts are switched via the `?act=` URL parameter (recording-time tool, not a real auth flow).
+- Next.js 14 app router
+- React 18 client components
+- TypeScript strict mode
+- Plain CSS (`tokens.css`, `components.css`, `globals.css`)
+- Postgres 16 in Docker, accessed through Prisma
+- Vitest for automated tests
 
----
+Docker maps Postgres container port 5432 to host port 5433. Prisma reads `DATABASE_URL`; seed smoke tests use `DATABASE_URL_TEST`.
 
-## Layer map
+## Routes
 
-### `src/app/*` — routes
-
-Thin Next.js page wrappers. One file per route, each just renders the corresponding screen component. No business logic here.
-
-| Route | Renders | Notes |
+| Route | Renders / owns | Notes |
 |---|---|---|
-| `/` | `ChallengePage` | Day-1 landing, video, accept-the-Dare flow |
-| `/dashboard` | `DashboardPage` | Participant evidence form |
-| `/ranking` | `RankingPage` | Hype Ranking |
-| `/feed` | `FeedPage` | Social feed |
-| `/agents` | `AgentsPage` | Admin's agent control surface (4 cards) |
-| `/admin` | `AdminPage` | Admin Review (formula panel, snapshot view, top-2 compare, all-submissions queue) |
-| `/insights` | `InsightsPage` | Growth Insight Extractor output |
+| `/` | `ChallengePage` | Day-1 landing, video, accept-the-Dare flow. |
+| `/dashboard` | `DashboardPage` | Participant evidence form. |
+| `/ranking` | `RankingPage` | Hype Ranking. |
+| `/feed` | `FeedPage` | Social feed. |
+| `/agents` | `AgentsPage` | Admin agent control surface. |
+| `/admin` | `AdminPage` | Admin review, formula, receipts, winner flow. |
+| `/insights` | `InsightsPage` | Growth Insight Extractor output. |
+| `/api/agents/*` | Agent route handlers | Provider-ready Step-2 routes. Do not expose provider keys to the client. |
+| `/api/seed` | Seed route | `?act=` setup endpoint; writes deterministic Postgres rows. |
 
-`src/app/layout.tsx` mounts the global shell (`AppShell`) which wires the role + stage providers, the toast provider, and the `applyActFromUrl()` effect.
+`src/app/layout.tsx` mounts `AppShell`, which wires role/stage/toast providers and runs `applyActFromUrl()`.
 
-### `src/components/screens/*` — page composition
-
-One file per page. Each is the canonical owner of its page-level state. Pages call into `src/lib/api.ts` for reads/writes; they don't read `mock-data.ts` directly.
-
-Modal-style screens are siblings:
-- `RegisterModal.tsx` — terms acceptance
-- `DesignerModal.tsx` — Challenge Designer interactive flow
-
-### `src/components/shell/*` — chrome
+## Runtime Library
 
 | File | Responsibility |
 |---|---|
-| `AppShell.tsx` | Provider tree (StageProvider → RoleProvider → ToastProvider) + the layout grid + `applyActFromUrl()` on mount |
-| `TopBar.tsx` | Challenge pill, **static** account badge (no role switcher), notification bell |
-| `Sidebar.tsx` | Nav with stage-aware lock/unlock; the Growth Insights tab is gated on `winnerDeclared` (read live from `getChallenge().winnerId`) |
-| `NotificationBell.tsx` | Bell + dropdown |
-| `Logo.tsx`, `PageHead.tsx` | small primitives |
+| `src/lib/api.ts` | Stable screen-facing API. Delegates to server actions and keeps Step-2 agent wrapper/fallback behavior. |
+| `src/lib/mock-data.ts` | Seed data: DYD #001, participants, evidence packets, feed seeds, notifications, agent snapshots. |
+| `src/lib/demo-stages.ts` | Stage snapshot source of truth. Seed functions translate `buildSnapshot(stage, currentUserId)` to DB rows. |
+| `src/lib/act-url.ts` | Parses `?act=tomi:launch` / `?act=gabo:completed:hype,growth`, calls `/api/seed`, stores local role/stage hints, flips handoff flags, reloads. |
+| `src/lib/formula.ts` | Scoring formula and local formula config at `dyd:formula:v1`. |
+| `src/lib/role-context.tsx` | Local role shim (`dyd:role:v1`) plus current-user refresh. |
+| `src/lib/stage-context.tsx` | Local stage hint (`dyd:stage:v1`) for UI formatting/stage gating. |
+| `src/lib/types.ts` | Product domain types. |
 
-### `src/components/ui/*` — primitives
+## Server Data Layer
 
-`Avatar`, `Modal`, `Toast`, `Icon` (inline-SVG icon set, lucide-style), `BotMessageCard`. Reused across screens.
-
-### `src/agents/*` — the agent layer (THE Step-2 swap targets)
-
-Each agent is a **pure deterministic function** today. No I/O, no LLM call, no async work beyond what the calling layer wraps in. These are exactly what Step 2 will replace with real LLM calls.
-
-| File | Agent | Public API |
-|---|---|---|
-| `challenge-designer.ts` | Challenge Designer | `design(input: ChallengeDesignerInput): ChallengeBrief` |
-| `daremaster.ts` *(was `hype-bot.ts`)* | Daremaster | `generate(snapshot: DaremasterSnapshot): DaremasterPost`, `pickTrigger(s)` |
-| `audit-assistant.ts` | AI Audit Assistant | `audit({ packet, contract }: AuditInput): AuditFindings` |
-| `insight-extractor.ts` | Growth Insight Extractor | `extract({ approvedPackets, rejectedCount }: InsightInput): InsightBundle` |
-| `types.ts` | (shared) | All agent I/O contracts |
-| `index.ts` | (shared) | Re-exports |
-
-**The I/O contracts in `types.ts` are the canonical interfaces.** Real LLM implementations must keep the same input and output shapes. That's the contract that protects the rest of the app from the swap.
-
-### `src/lib/*` — runtime library
-
-| File | What it does |
+| File / folder | Responsibility |
 |---|---|
-| `api.ts` | Fake API layer. localStorage-backed (`dyd:state:v1`). Every screen calls these functions; nothing reads `mock-data.ts` directly. Mutations dispatch a `dyd:state-changed` window event. |
-| `mock-data.ts` | Seed data: the challenge + audit contract, evidence packets per participant (`BOB_ITEMS`, `PATRICK_ITEMS`, etc.), participants list, `agentSnapshots`, seeded feed posts, seeded notifications. |
-| `demo-stages.ts` | Single source of truth for what state looks like at each stage. `buildSnapshot(stage, currentUserId)` returns a complete `StageStateSnapshot`. `setDemoStage()` overwrites localStorage with a fresh snapshot. Stage shaping is centralized here — participants, ranking, feed, audits, evidence, notifications. |
-| `formula.ts` | Scoring formula + persistence at `dyd:formula:v1`. `effectiveQualityScore`, `qualityComponent`, `quantityComponent`, `computeFormulaScore`, `effectiveFinalScore`, `formulaTrace`. The whole app uses `effectiveFinalScore(audit, formula)` for displayed scores. |
-| `format.ts` | Stage-anchored time helpers: `STAGE_NOW` (per-stage "now"), `ago`, `demoNow`, `fmtDate`. Why: timestamps in seeded posts must read sensibly relative to whichever stage you're viewing. |
-| `role-context.tsx` | `<RoleProvider>` + `useRole()`. Hydrates from `dyd:role:v1`, calls `api.setRole()` on change. |
-| `stage-context.tsx` | `<StageProvider>` + `useStage()`. Hydrates from `dyd:stage:v1`. The setter calls `setDemoStage` and reloads the page. |
-| `act-url.ts` | `applyActFromUrl()` — recording-time setup mechanism. Parses `?act=tomi:launch` / `?act=gabo:day_14:hype,growth`, calls `resetState()`, `setDemoStage(stage)`, `apiSetRole(role)`, optionally flips snapshot flags, then strips the param and reloads. |
-| `types.ts` | Product domain types: `Role`, `Challenge`, `Participant`, `RankingEntry`, `FeedPost`, `EvidenceSubmission`, `AuditResult`, `AgentSnapshot`, `GrowthAssetBundle`, `Notification`, `User`. |
+| `src/server/db.ts` | Prisma client singleton. Server-only. |
+| `src/server/world.ts` | DB mapping, persistence operations, deterministic seed translation, and agent input assembly. |
+| `src/server/actions/*.ts` | `"use server"` action modules grouped by domain. These are imported by `src/lib/api.ts`. |
+| `src/server/seed/*.ts` | `seedLaunch`, `seedDay3`, `seedDay14`, `seedCompleted`, and `seedAll`. |
+| `scripts/db-setup.mjs` | Idempotent Docker/Postgres/Prisma bootstrap. |
+| `scripts/run-seed.ts` | `npm run db:seed -- <stage> <role>`. |
 
-### Styles
+Prisma artifacts:
 
-- `src/styles/globals.css` — root, font imports, `@import` of tokens.css and components.css.
-- `src/styles/components.css` — bespoke component classes (`.app-header`, `.feed-card`, `.kpi-card`, etc.).
-- `src/styles/tokens.css` — color/spacing/font tokens.
+| File / folder | Purpose |
+|---|---|
+| `prisma/schema.prisma` | Canonical schema artifact. |
+| `prisma/migrations/*/migration.sql` | Raw SQL artifact. |
+| `docker-compose.yml` | Local Postgres 16 container. |
 
-### Utility scripts
+## State Model
 
-- `scripts/audit-check.ts` — standalone runner that verifies the audit math against the seed packets. Useful as a sanity check after touching `audit-assistant.ts` or `mock-data.ts`.
+### Database Tables
 
----
+| Table | Purpose |
+|---|---|
+| `User` | Tomi/Gabo plus competitor users. Auth remains mocked. |
+| `Challenge` | DYD #001 metadata, deadlines, rules, audit contract, winner id. |
+| `ChallengeState` | Current seeded stage, active user id, Daremaster/Growth handoff flags. |
+| `Participant` | Registration, self-reported count, ranking fields, badges, evidence status. |
+| `EvidencePacket` / `EvidenceItem` | Structured audit/insight corpus consumed by agents. |
+| `EvidenceSubmission` | Dashboard submission rows. |
+| `AuditResult` | Audit Assistant results, score receipt trace, admin overrides. |
+| `FeedPost` | Social feed posts, reactions, pin state, CTA metadata. |
 
-## State model
+### LocalStorage Keys
 
-### LocalStorage keys
-
-| Key | Shape | Cleared by `resetState()`? |
+| Key | Shape | Why it remains local |
 |---|---|---|
-| `dyd:state:v1` | full snapshot — participants, ranking, feed, evidence, audits, challenge, currentUserId, notifications, `daremasterInsightSent`, `growthInsightSent` | yes |
-| `dyd:stage:v1` | the active demo stage string | reset to `"launch"` |
-| `dyd:role:v1` | `"participant"` or `"admin"` | no |
-| `dyd:formula:v1` | scoring formula config (qualityWeight, targetItems, optional rubricWeights) | yes |
+| `dyd:stage:v1` | active demo stage string | UI formatting and stage context hydration. Source of truth is also in `ChallengeState`. |
+| `dyd:role:v1` | `"participant"` or `"admin"` | Recording/auth shim. No real sessions in scope. |
+| `dyd:formula:v1` | scoring formula config | Per-browser admin tuning, intentionally not shared world state. |
 
-### State flow
+### Flow
 
-1. The act URL (or first page load) calls `setDemoStage(stage)` → `buildSnapshot(stage, currentUserId)` → writes to `dyd:state:v1`.
-2. Screens fetch via `src/lib/api.ts` async functions (artificial 150–300 ms latency per call).
-3. Mutations write the snapshot back to localStorage and dispatch `dyd:state-changed`.
-4. Subscribers (Sidebar, AgentsPage handoff loaders, etc.) listen to that event and refresh.
+1. The act URL calls `/api/seed?stage=<stage>&role=<role>`.
+2. `/api/seed` calls `seedAll(stage, role)`, which truncates owned tables and inserts deterministic rows from `buildSnapshot`.
+3. Screens fetch through `src/lib/api.ts`, which delegates to server actions.
+4. Mutations update Postgres and dispatch `dyd:state-changed` so client subscribers refresh.
 
-### The demo-stage abstraction
+## Mock-vs-Real Boundaries
 
-Stages are a recording-time tool. `buildSnapshot` shapes participants, the ranking, the feed, the evidence, the audits, the notifications, and the handoff flags as a single atomic structure. Re-running the same stage URL always produces the same snapshot — this is the determinism that makes recording reliable.
+| Subsystem | Current state |
+|---|---|
+| Auth | Mocked. Tomi/Gabo are seeded users selected through `?act=`. |
+| Seed data | Mocked. DYD #001 and evidence packets live in `mock-data.ts`, then get inserted into Postgres by seeds. |
+| Persistence | Real local Postgres. The demo world is queryable through Prisma Studio. |
+| Agents | Provider-ready routes with deterministic fallback. The no-key submission build runs on fallbacks. |
+| Formula config | localStorage by product decision. |
+| Recording controls | `?act=` and stage hints are demo tooling, not production design. |
 
-In production, state would advance organically (registrations roll in, submissions arrive, deadlines pass). The stage system is **not** part of the production design; it's purely a demo control plane.
+The recorded demo remains the product surface. Provider-generated wording may diverge, but structural beats must hold.
 
----
-
-## Mock-vs-real boundaries
-
-For each subsystem, what's mocked today and what could go real in Step 2.
-
-### Auth — **out of scope** (mocked, stays mocked)
-
-- Currently: Tomi/Gabo are seeded users; account is selected via the `?act=` URL.
-- Step 2: stays mocked. NEXT_STEPS.md locks this. The README will note it.
-
-### Seed data (challenge + packets + participants) — **out of scope** (mocked, stays mocked)
-
-- Currently: `src/lib/mock-data.ts` holds DYD #001 — Testimonial Hunt + four hand-authored evidence packets (Bob, Patrick, Alice, Charlie) + filler participants.
-- Step 2: stays mocked. Replacing the seed dataset is out of scope.
-
-### The four agents — **in scope**
-
-| Agent | Today | Real-LLM swap difficulty |
-|---|---|---|
-| **Challenge Designer** | Keyword-matched template selection | **Easy.** Small input, structured output. |
-| **Daremaster** | Trigger-based template + 3 pre-baked content variants | **Easy.** Small input (snapshot), short output (paragraph). |
-| **AI Audit Assistant** | Per-criterion rule-based scorers on structured signals | **Hard.** "Real" audit needs to read raw video and extract signals. Cheaper option: keep structured signals mocked, swap only the `trace` narrative to LLM. |
-| **Growth Insight Extractor** | Heuristic ranking + grouped templates | **Easy-Medium.** Reads validated corpus, emits structured asset bundle. |
-
-The pure-function structure means each swap is local: replace the function body with a server-side LLM call (server action or API route), keep the input/output types. No type changes propagate.
-
-### Persistence — **out of scope** (mocked, stays mocked)
-
-- Currently: localStorage. No backend.
-- Step 2: stays. Adding a backend would be Step-3 territory at the earliest.
-
-### LLM provider — **to be decided in Step 2**
-
-- Anthropic API is the project context, so it's the default candidate. Server-side call required (don't expose the key in the client). Each live agent should fall back to its current pure-function mock if the API key is missing or the call fails — demos must run without a key.
-
-### Recording-only mechanisms — **stay mocked** (they're demo tools, not product surface)
-
-- The `?act=` URL — recording setup. Not part of production.
-- `setDemoStage()` and the demo-stage abstraction — recording tools.
-- The static account badge in the TopBar — would become a real auth UI in production.
-- `STAGE_NOW` (per-stage anchored "now") — only matters because timestamps in seed data must read sensibly inside each stage. Real production has real timestamps.
-
----
-
-## Build / run
+## Build / Run
 
 ```bash
 npm install
-npm run dev          # http://localhost:3000
-npx tsc --noEmit     # type check
+npm run db:setup
+npm run dev
+npm test
+npx tsc --noEmit
 ```
 
-Don't run `next build` to verify changes — it writes prod chunks under `.next/` that confuse the running dev server. Use `tsc --noEmit`.
+Use `npm run db:studio` to inspect rows. Do not use `next build` as the default local verification command; it writes production chunks under `.next/`.
 
----
+## Historical Reference
 
-## Historical reference (not part of the running app)
-
-- `prototype/` — earlier static-HTML prototype (single HTML file + CSS + data.js).
-- `prototype-components/` — the JSX prototype the current React app was lifted from.
-
-These are kept on disk as visual reference and will be deleted in NEXT_STEPS.md Step 3. Ignore them when planning Step 2.
+`prototype/` and `prototype-components/` are historical visual references only.
