@@ -1,183 +1,68 @@
-# DYD — Claude orientation
+# CLAUDE.md — orientation for Claude Code sessions
 
-This file is loaded automatically by Claude Code. It exists so any Claude
-session — including a fresh one on a different account — can pick up where
-the last one left off without the user having to re-explain anything.
+This file is loaded automatically by Claude Code at the start of a session in this repo. It exists so any future Claude — including a fresh one on a different account — can pick up the project without the user re-explaining anything.
 
 ## What this project is
 
-DYD ("Do You Dare") is an internal hackathon prototype for a BairesDev
-growth-challenge platform. Employees register for time-boxed dares (e.g.
-"collect client testimonials"), self-report progress on a public Hype
-Ranking, and submit evidence. Four AI agents run in the background:
+DYD ("Do You Dare") is an internal growth-challenge platform for BairesDev. Employees register for time-boxed Dares, self-report progress on a public Hype Ranking, and submit evidence. Four AI agents — Daremaster, AI Audit Assistant, Growth Insight Extractor, Challenge Designer — handle the operational work. An admin orchestrates them.
 
-- **Challenge Designer** turns a one-line idea into a full challenge brief.
-- **Daremaster** posts contextual commentary in the social feed and is the
-  same persona as the launch-video narrator.
-- **AI Audit Assistant** scores evidence against a rubric and surfaces a
-  recommendation; the admin keeps the final call and can override scores.
-- **Growth Insight Extractor** mines the approved corpus into reusable
-  marketing assets (quotes, case studies, snippets, LinkedIn drafts).
+The product spec, agent contracts, scoring formula, and lifecycle stages are all documented in `README.md`. Read that first.
 
-**Canonical docs to read** (in this order):
+## Where to read for context
 
-1. `README.md` — quick start, doc map.
-2. `PRODUCT.md` — what DYD is. The product spec.
-3. `ARCHITECTURE.md` — code map and mock-vs-real boundaries.
-4. `DEMO.md` — what the recorded demo shows + the divergence rule.
-5. `NEXT_STEPS.md` — the three-step plan.
-6. `STEP2_BRIEF.md` — only if you're planning Step 2.
+In this order:
 
-`DEMO_SCRIPT.md` is the user's recording reference. It's not part of the
-canonical product spec — skip it unless the user asks you to edit it.
+1. **`README.md`** — what DYD is, how to run it, the lifecycle URL system, what's built vs stubbed.
+2. **`ROADMAP.md`** — what's still needed for production. Helpful when the user is talking about a feature that doesn't exist yet.
+3. **`JOURNEY.md`** — how the project was built. The architect-implementer pattern, the testing layers, the cost discipline. Useful for understanding *why* certain decisions were made.
 
-## Status
+## Conventions that matter
 
-Step 1 is complete: the demo is recordable. Step 2 is the active step —
-replacing selected agent mocks with real LLM-driven implementations. The
-user is using a separate AI tool to scope Step 2 against `STEP2_BRIEF.md`
-before any implementation begins.
-
-## Demo state model
-
-Four stages live in `src/lib/demo-stages.ts`:
-
-- `launch` — Tomi lands on the Challenge page, hasn't yet accepted.
-- `day_3` — Tomi uploads a testimonial, count auto-bumps.
-- `day_14` — Gabo tunes the formula, sends the snapshot to the Daremaster.
-- `completed` — final review, accept scores, declare winner, run insights.
-
-Selecting a stage rebuilds the entire snapshot atomically (participants,
-ranking, feed, audits, evidence, notifications). This happens via
-`setDemoStage()` in `src/lib/api.ts`.
-
-Two flags travel inside the snapshot and drive the agent handoff demo
-beats:
-
-- `daremasterInsightSent` — set by the admin's "Send snapshot to Daremaster"
-  button on `/admin` at Day 14. Unlocks the Charlie-dark-horse post.
-- `growthInsightSent` — set by the admin's "Send insights to Daremaster"
-  button on `/insights` at Completed. Unlocks the winner-announcement post.
-
-Old localStorage from before the rename (`hypeBotInsightSent`) will be
-overwritten on the next `?act=` URL — no migration logic needed.
-
-The world dispatches a `dyd:state-changed` window event after every
-mutation so subscribers (the sidebar's locked-tab logic, the agent
-handoff loaders, the `winnerDeclared` gate on Growth Insights) refresh
-without waiting for navigation.
-
-## Account / stage setup — `?act=` URL
-
-The TopBar shows a static account badge (no in-product role switcher).
-Account and stage are set via a hidden URL parameter: `applyActFromUrl()`
-in `src/lib/act-url.ts` parses `?act=tomi:launch`, `?act=gabo:day_14`,
-`?act=gabo:completed:hype,growth`, etc. Each call resets state and
-rebuilds the snapshot from seed.
-
-## Scoring formula
-
-`src/lib/formula.ts` owns the math:
-
-```
-Final score = Quality × W%  +  Quantity × (100 − W)%   on a 0–10 scale
-```
-
-- **Quality** = `qualityScore / 10`, where `qualityScore` is a 0–100 blend
-  of rubric criteria (per-criterion weights are admin-tunable inside the
-  formula panel).
-- **Quantity** = `min(validatedItems / targetItems, 1) × 10`. `targetItems`
-  is hidden from the UI but defaults to 12.
-- **Override**: when admin enters an explicit `overrideScore` it takes
-  precedence over the formula.
-
-The formula is persisted in localStorage at `dyd:formula:v1`. Any UI that
-displays a final score uses `effectiveFinalScore(audit, formula)` so the
-numbers everywhere agree.
-
-Day 14 audits run against **trimmed packets** — each participant's evidence
-sliced to their current self-reported count — so the snapshot matches the
-state of the competition mid-challenge. Completed audits use the full
-packet.
-
-## Roles and accounts
-
-Two accounts only:
-
-- `Tomi` (participant) — `u-sofia` / `p-sofia` under the hood.
-- `Gabo` (admin) — `u-admin`.
-
-Sponsor and Spectator are gone. The TopBar shows a static badge; there is
-no role switcher and no Restart-demo button. State is reset via the
-`?act=` URL.
-
-## Conventions to keep
-
-- **No "mock" / "mocked" / "simulated" wording in user-visible UI.** The
-  fact that the backend is mocked is implementation detail.
-- **No "demo" / "prototype" wording in user-visible UI either.** Demo-meta
-  language was scrubbed from screens; if you see it, ask before re-adding.
-- **No scores in Daremaster posts.** The Daremaster never quotes audit
-  scores on the public feed. Counts and qualitative descriptions are fine.
-- **Default to no comments.** Only add a comment when the *why* is
-  non-obvious. Don't narrate what code does.
-- **Brief end-of-turn summaries.** One or two sentences on what changed
-  and what's next. No headers and sections for simple tasks.
-- **Don't add features beyond what was asked.** Bug fixes don't need
-  surrounding cleanup.
-- **Use the dedicated tools (Read, Edit, Write).** Reserve Bash for
-  shell-only operations; never use it for `cat`/`head`/`echo`.
-- **Don't run `next build` to "verify" — `tsc --noEmit` is enough.**
-  `next build` writes prod chunks that confuse the running dev server.
-
-## Files at a glance
-
-```
-src/
-├── app/                          Next.js routes (thin wrappers)
-├── components/
-│   ├── shell/                    TopBar, Sidebar, AppShell, NotificationBell
-│   ├── ui/                       Modal, Avatar, Toast, Icon (lucide-style SVGs)
-│   └── screens/                  One file per page: ChallengePage,
-│                                 DashboardPage, RankingPage, FeedPage,
-│                                 AdminPage, AgentsPage, InsightsPage,
-│                                 DesignerModal, RegisterModal
-├── agents/
-│   ├── audit-assistant.ts        Pure function: rubric scoring + flags
-│   ├── daremaster.ts             Pure function: snapshot → post
-│   ├── insight-extractor.ts      Pure function: corpus → asset bundle
-│   ├── challenge-designer.ts     Templates keyed off the one-line prompt
-│   └── types.ts                  Agent I/O contracts
-├── lib/
-│   ├── types.ts                  Shared product types (Challenge, Audit, etc.)
-│   ├── api.ts                    Fake API layer; localStorage-backed
-│   ├── mock-data.ts              Seed data (participants, evidence, posts)
-│   ├── demo-stages.ts            Stage shaping — single source of truth for
-│                                 what the world looks like at each scene
-│   ├── formula.ts                Scoring formula + persistence
-│   ├── format.ts                 Stage-anchored `ago()` and date helpers
-│   ├── act-url.ts                ?act= URL handler (recording setup)
-│   ├── role-context.tsx          Role provider (Tomi/Gabo)
-│   └── stage-context.tsx         Stage provider
-└── styles/
-    ├── globals.css
-    ├── components.css            All bespoke component classes
-    └── tokens.css                Color/space/font tokens
-```
+- **No "demo", "mock", "prototype", or "simulated" wording in user-visible UI or markdown docs.** The implementation history is not the product. Internal code comments are fine.
+- **No numeric audit scores in Daremaster posts.** The validator enforces it; if you're tempted to soften the check, don't — that invariant exists because the user explicitly required it.
+- **Default to no comments in code.** Only annotate non-obvious *why*. Don't narrate what code does.
+- **Brief end-of-turn summaries.** One or two sentences on what changed. No headers and sections for simple tasks.
+- **Don't run `next build` to verify changes.** It writes prod chunks under `.next/` that confuse the running dev server. Use `npm run typecheck` and `npm test`.
+- **`?act=` URLs** are the canonical way to set the app's state — never edit the database directly to reach a lifecycle stage.
+- **`.env` is gitignored.** Never commit a real `ANTHROPIC_API_KEY`. `.env.example` is the template.
 
 ## Quick smoke test
 
 After any structural change, this should still work:
 
-1. `npm run dev`
-2. `npx tsc --noEmit`
-3. Visit `/?act=tomi:launch` — Tomi lands unregistered with the three
-   follow-on tabs locked.
-4. Click "I Dare" → tabs unlock instantly (powered by the
-   `dyd:state-changed` event).
-5. Visit `/?act=gabo:day_14` — admin lands; the Daremaster card is
-   reachable; the formula panel is on `/admin`.
-6. Visit `/?act=gabo:completed` — admin lands; "Open Final Review" CTA;
-   only one notification in the bell (until winner is declared).
+```bash
+npm test            # 137 tests, ~2.5s
+npm run typecheck   # tsc --noEmit, clean
+npm run dev         # then open the URLs below
+```
+
+UI smoke:
+
+1. `/?act=tomi:launch` — Tomi lands unregistered, locked tabs visible.
+2. `/?act=tomi:day_3` — Tomi can submit a testimonial; ranking re-sorts.
+3. `/?act=gabo:day_14` — Admin sees the formula panel and the snapshot view.
+4. `/?act=gabo:completed` — Admin can review, declare a winner, run insights.
+
+## File pointers for common tasks
+
+- **Touching an agent's contract** → `src/agents/types.ts`. Every shape there is consumed by both the deterministic fallback and the live route's validator.
+- **Adding or modifying a Daremaster trigger / post variant** → `src/agents/daremaster.ts` for the deterministic side, `src/app/api/agents/daremaster/route.ts` for the live side, `src/app/api/agents/_shared/validation.ts` for the schema check.
+- **Scoring math** → `src/lib/formula.ts`. The displayed final score everywhere flows through `effectiveFinalScore(audit, formula)`.
+- **The lifecycle seed** → `src/lib/demo-stages.ts` is the source of truth for what the world looks like at each stage. The server seeds in `src/server/seed/*.ts` translate it into Postgres rows.
+- **The act URL parser** → `src/lib/act-url.ts`. Calls `/api/seed` then strips the query param and reloads.
+- **State broadcasting** → `dyd:state-changed` is the window event clients listen to after every mutation. Sidebar lock state, agent handoff notes, and the notification bell all subscribe.
+- **Live agent verification** → `scripts/test-live-agents.ts`. Single entry point for real provider calls. Pre-flight with no key returns 503 across the board and costs $0.
+
+## Active conventions in the data model
+
+- **`Challenge.winnerId`** is the source of truth for "the admin declared a winner."
+- **`ChallengeState.daremasterInsightSent`** flips when the admin sends the audit snapshot at day_14.
+- **`ChallengeState.growthInsightSent`** flips when the admin ships the growth bundle at completed.
+- **`ChallengeState.currentUserId`** is the active account. Set by the `?act=` flow.
+- The localStorage keys cleared by `resetState()`: `dyd:formula:v1`, `dyd:formula-last-sent:v1`, `dyd:insight-bundle:v1`, `dyd:admin-review-opened:v1`. If you add another piece of client-only state that should reset between `?act=` invocations, add it to that list.
+
+## Working on this project
+
+The user (Tomi) ran the build by rotating between Architect and Implementer roles — same model, different system prompts and inputs. If you're stepping into a fresh session, the user will tell you which role to play. Default behavior: ask which role we're in if it isn't obvious from the request.
 
 If anything in this file conflicts with reality, fix the file.
